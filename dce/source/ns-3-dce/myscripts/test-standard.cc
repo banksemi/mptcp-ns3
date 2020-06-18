@@ -199,7 +199,7 @@ int main (int argc, char *argv[]) {
 	}
     */
 
-    pointToPoint.EnablePcapAll ("/home/seung/pcap/mptcp-lte-wifi");
+    pointToPoint.EnablePcapAll ("../../pcap/pcap_file");
     
 
     Simulator::Stop (Seconds (100));
