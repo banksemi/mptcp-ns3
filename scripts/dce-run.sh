@@ -1,6 +1,6 @@
 #! /bin/bash
 
-// 커널 폴더로
+# 커널 폴더로
 cd ../../
 
 mkdir pcap
