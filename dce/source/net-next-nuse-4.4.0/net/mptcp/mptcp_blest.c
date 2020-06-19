@@ -86,7 +86,7 @@ static void update_lambda(struct sock *slow_sk, struct sock *meta_sk)
 
 	slowrtt = slowdsp->min_srtt;
 	if (!slowrtt)
-		slowrtt = slowtp->srtt;
+		slowrtt = slowtp->srtt_us;
 
 	if (tcp_time_stamp - dsp->last_lambda_update < (slowrtt >> 3))
 		return;
@@ -117,14 +117,14 @@ static void mptcp_update_stats(struct sock *sk)
 	struct defsched_priv *dsp = defsched_get_priv(tp);
 
 	if (!dsp->min_srtt) {
-		dsp->min_srtt = tp->srtt;
-		dsp->max_srtt = tp->srtt;
+		dsp->min_srtt = tp->srtt_us;
+		dsp->max_srtt = tp->srtt_us;
 	}
 	else {
-		if (tp->srtt < dsp->min_srtt)
-			dsp->min_srtt = tp->srtt;
-		if (tp->srtt > dsp->max_srtt)
-			dsp->max_srtt = tp->srtt;
+		if (tp->srtt_us < dsp->min_srtt)
+			dsp->min_srtt = tp->srtt_us;
+		if (tp->srtt_us > dsp->max_srtt)
+			dsp->max_srtt = tp->srtt_us;
 	}
 }
 
@@ -164,7 +164,7 @@ static u32 estimate_linger_time(struct sock* sk)
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct defsched_priv *dsp = defsched_get_priv(tp);
 
-	u32 old_estim = tp->srtt;
+	u32 old_estim = tp->srtt_us;
 
 	u32 inflight = tcp_packets_in_flight(tp) + 1; // take into account the new one
 	u32 cwnd = tp->snd_cwnd;
@@ -335,12 +335,12 @@ static struct sock *get_available_subflow(struct sock *meta_sk,
 			mptcp_update_stats(sk);
 
 			// record minimal rtt
-			if (tp->srtt < min_time_to_peer) {
-				min_time_to_peer = tp->srtt;
+			if (tp->srtt_us < min_time_to_peer) {
+				min_time_to_peer = tp->srtt_us;
 				minsk = sk;
 			}
 
-			if (tp->srtt < best_time_to_peer) {
+			if (tp->srtt_us < best_time_to_peer) {
 				if (!mptcp_is_available(sk, skb, zero_wnd_test, true))
 					continue;
 
@@ -349,7 +349,7 @@ static struct sock *get_available_subflow(struct sock *meta_sk,
 					continue;
 				}
 
-				best_time_to_peer = tp->srtt;
+				best_time_to_peer = tp->srtt_us;
 				bestsk = sk;
 			}
 		}
@@ -363,13 +363,13 @@ static struct sock *get_available_subflow(struct sock *meta_sk,
 			struct tcp_sock *mintp  = tcp_sk(minsk);
 			struct tcp_sock *besttp = tcp_sk(bestsk);
 
-			// if we send this SKB now, it will be acked in besttp->srtt seconds
+			// if we send this SKB now, it will be acked in besttp->srtt_us seconds
 			// during this time: how many bytes will we send on the fast flow?
 			u32 slow_linger_time = estimate_linger_time(bestsk);
 			u32 fast_bytes = estimate_bytes(minsk, slow_linger_time);
 
 			// is the required space available in the mptcp meta send window?
-			// we assume that all bytes inflight on the slow path will be acked in besttp->srtt seconds
+			// we assume that all bytes inflight on the slow path will be acked in besttp->srtt_us seconds
 			// (just like the SKB if it was sent now) -> that means that those inflight bytes will
 			// keep occupying space in the meta window until then
 			u32 slow_inflight_bytes = besttp->write_seq - besttp->snd_una;
@@ -390,7 +390,7 @@ static struct sock *get_available_subflow(struct sock *meta_sk,
 		mptcp_for_each_sk(mpcb, sk) {
 			struct tcp_sock *tp = tcp_sk(sk);
 	
-			if (tp->srtt < best_time_to_peer) {
+			if (tp->srtt_us < best_time_to_peer) {
 				if (!mptcp_is_available(sk, skb, zero_wnd_test, true))
 					continue;
 	
@@ -399,7 +399,7 @@ static struct sock *get_available_subflow(struct sock *meta_sk,
 					continue;
 				}
 	
-				best_time_to_peer = tp->srtt;
+				best_time_to_peer = tp->srtt_us;
 				bestsk = sk;
 			}
 		}
@@ -454,14 +454,14 @@ static struct sk_buff *mptcp_rcv_buf_optimization(struct sock *sk, int penal)
 		goto retrans;
 
 	/* Only penalize again after an RTT has elapsed */
-	if (tcp_time_stamp - dsp->last_rbuf_opti < tp->srtt >> 3)
+	if (tcp_time_stamp - dsp->last_rbuf_opti < tp->srtt_us >> 3)
 		goto retrans;
 
 	/* Half the cwnd of the slow flow */
 	mptcp_for_each_tp(tp->mpcb, tp_it) {
 		if (tp_it != tp &&
 		    TCP_SKB_CB(skb_head)->path_mask & mptcp_pi_to_flag(tp_it->mptcp->path_index)) {
-			if (tp->srtt < tp_it->srtt && inet_csk((struct sock *)tp_it)->icsk_ca_state == TCP_CA_Open) {
+			if (tp->srtt_us < tp_it->srtt_us && inet_csk((struct sock *)tp_it)->icsk_ca_state == TCP_CA_Open) {
 				u32 prior_cwnd = tp_it->snd_cwnd;
 
 				tp_it->snd_cwnd = max(tp_it->snd_cwnd >> 1U, 1U);
@@ -489,7 +489,7 @@ retrans:
 					break;
 				}
 
-				if (4 * tp->srtt >= tp_it->srtt) {
+				if (4 * tp->srtt_us >= tp_it->srtt_us) {
 					do_retrans = false;
 					break;
 				} else {
