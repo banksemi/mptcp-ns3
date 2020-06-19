@@ -189,8 +189,8 @@ int main (int argc, char *argv[]) {
 
 
     int _switch = 0;
-    Simulator::Schedule(Seconds(1), &ChangeRTT, 0 , StringValue("30Mbps"), StringValue("10ms")); // start UE movement
-    Simulator::Schedule(Seconds(1), &ChangeRTT, 1, StringValue("30Mbps"), StringValue("100ms")); // start UE movement
+    Simulator::Schedule(Seconds(1), &ChangeRTT, 0 , StringValue("100Mbps"), StringValue("5ms")); // start UE movement
+    Simulator::Schedule(Seconds(1), &ChangeRTT, 1, StringValue("100Mbps"), StringValue("10ms")); // start UE movement
     /*
     for(int i = 2; i<32; i += 5) {
         Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch) % 2, StringValue("100Mbps"), StringValue("50ms")); // start UE movement
