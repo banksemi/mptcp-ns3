@@ -5,7 +5,6 @@
 
 <pre>
 git clone -b testing https://github.com/banksemi/mptcp-ns3.git
-chmod 777 mptcp-ns3 -R
 
 cd ./mptcp-ns3/scripts
 
