@@ -48,7 +48,7 @@ static struct blestsched_priv *blestsched_get_priv(const struct tcp_sock *meta_t
 {
 	struct mptcp_cb *mpcb = meta_tp->mpcb;
 	struct tcp_sock *first_tp = mpcb->connection_list; // first connection
-	return (struct defsched_priv *)&first_tp->mptcp->mptcp_sched[0] + sizeof(struct defsched_priv);
+	return (struct defsched_priv *)&first_tp->mptcp->mptcp_sched[0] + 1;
 }
 
 static void modify_lambda(struct sock *meta_sk, int dir)
@@ -664,7 +664,7 @@ static void defsched_init(struct sock *sk)
 	dsp->last_rbuf_opti = tcp_time_stamp;
 
 
-	struct blestsched_priv *bsp = dsp + sizeof(struct defsched_priv);
+	struct blestsched_priv *bsp = dsp + 1;
 	bsp->lambda_1000 = lambda * 100;
 }
 
