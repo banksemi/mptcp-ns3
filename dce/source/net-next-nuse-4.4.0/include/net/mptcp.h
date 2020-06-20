@@ -186,7 +186,7 @@ struct mptcp_tcp_sock {
 	u8	loc_id;
 	u8	rem_id;
 
-#define MPTCP_SCHED_SIZE 4
+#define MPTCP_SCHED_SIZE 128
 	u8	mptcp_sched[MPTCP_SCHED_SIZE] __aligned(8);
 
 	struct sk_buff  *shortcut_ofoqueue; /* Shortcut to the current modified
