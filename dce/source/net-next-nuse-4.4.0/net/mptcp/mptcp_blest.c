@@ -30,7 +30,9 @@ struct defsched_priv {
 
 	u32 min_srtt;
 	u32 max_srtt;
+};
 
+struct blestsched_priv {
 	int lambda_1000;
 
 	u32 last_lambda_update;
@@ -42,14 +44,21 @@ static struct defsched_priv *defsched_get_priv(const struct tcp_sock *tp)
 	return (struct defsched_priv *)&tp->mptcp->mptcp_sched[0];
 }
 
+static struct blestsched_priv *blestsched_get_priv(const struct tcp_sock *meta_tp)
+{
+	struct mptcp_cb *mpcb = meta_tp->mpcb;
+	struct tcp_sock *first_tp = mpcb->connection_list; // first connection
+	return (struct defsched_priv *)&first_tp->mptcp->mptcp_sched[0] + sizeof(struct defsched_priv);
+}
+
 static void modify_lambda(struct sock *meta_sk, int dir)
 {
 	struct tcp_sock *tp = tcp_sk(meta_sk);
-	struct defsched_priv *dsp = defsched_get_priv(tp);
+	struct blestsched_priv *bsp = blestsched_get_priv(tp);
 	int delta = 0;
 	u32 old_lambda_1000;
 
-	old_lambda_1000 = dsp->lambda_1000;
+	old_lambda_1000 = bsp->lambda_1000;
 
 	if (dir == -1) {
 		// use the slow flow more
@@ -61,11 +70,11 @@ static void modify_lambda(struct sock *meta_sk, int dir)
 		delta = dyn_lambda_bad;
 	}
 
-	dsp->lambda_1000 += delta;
-	if (dsp->lambda_1000 > max_lambda * 100)
-		dsp->lambda_1000 = max_lambda * 100;
-	else if (dsp->lambda_1000 < min_lambda * 100)
-		dsp->lambda_1000 = min_lambda * 100;
+	bsp->lambda_1000 += delta;
+	if (bsp->lambda_1000 > max_lambda * 100)
+		bsp->lambda_1000 = max_lambda * 100;
+	else if (bsp->lambda_1000 < min_lambda * 100)
+		bsp->lambda_1000 = min_lambda * 100;
 }
 
 // if there have been retransmissions of packets of the slow flow during the slow flows last RTT => increase lambda
@@ -75,12 +84,12 @@ static void update_lambda(struct sock *slow_sk, struct sock *meta_sk)
 	struct tcp_sock *slowtp = tcp_sk(slow_sk);
 	struct defsched_priv *slowdsp = defsched_get_priv(slowtp);
 	struct tcp_sock *tp = tcp_sk(meta_sk);
-	struct defsched_priv *dsp = defsched_get_priv(tp);
+	struct blestsched_priv *bsp = blestsched_get_priv(tp);
 	u32 slowrtt;
 
-	if (!dsp->lambda_1000) {
-		dsp->lambda_1000 = lambda * 100;
-		dsp->last_lambda_update = tcp_time_stamp;
+	if (!bsp->lambda_1000) {
+		bsp->lambda_1000 = lambda * 100;
+		bsp->last_lambda_update = tcp_time_stamp;
 		return;
 	}
 
@@ -88,27 +97,27 @@ static void update_lambda(struct sock *slow_sk, struct sock *meta_sk)
 	if (!slowrtt)
 		slowrtt = slowtp->srtt_us;
 
-	if (tcp_time_stamp - dsp->last_lambda_update < (slowrtt >> 3))
+	if (tcp_time_stamp - bsp->last_lambda_update < (slowrtt >> 3))
 		return;
 
-	if (dsp->retrans_count > 0) {
+	if (bsp->retrans_count > 0) {
 		modify_lambda(meta_sk, 1);
 	}
 	else {
 		modify_lambda(meta_sk, -1);
 	}
-	dsp->retrans_count = 0;
+	bsp->retrans_count = 0;
 
-	dsp->last_lambda_update = tcp_time_stamp;
+	bsp->last_lambda_update = tcp_time_stamp;
 }
 
 static u32 get_dyn_lambda(struct sock *meta_sk)
 {
 	struct tcp_sock *tp = tcp_sk(meta_sk);
-	struct defsched_priv *dsp = defsched_get_priv(tp);
-	if (!dsp->lambda_1000)
+	struct blestsched_priv *bsp = blestsched_get_priv(tp);
+	if (!bsp->lambda_1000)
 		return lambda * 100;
-	return dsp->lambda_1000;
+	return bsp->lambda_1000;
 }
 
 static void mptcp_update_stats(struct sock *sk)
@@ -447,8 +456,8 @@ static struct sk_buff *mptcp_rcv_buf_optimization(struct sock *sk, int penal)
 		goto retrans;
 
 	struct tcp_sock *metatp = tcp_sk(meta_sk);
-	struct defsched_priv *metadsp = defsched_get_priv(metatp);
-	metadsp->retrans_count += 1;
+	struct blestsched_priv *bsp = blestsched_get_priv(metatp);
+	bsp->retrans_count += 1;
 
 	if (optim != 2) // no penal?
 		goto retrans;
@@ -654,7 +663,9 @@ static void defsched_init(struct sock *sk)
 
 	dsp->last_rbuf_opti = tcp_time_stamp;
 
-	dsp->lambda_1000 = lambda * 100;
+
+	struct blestsched_priv *bsp = dsp + sizeof(struct defsched_priv);
+	bsp->lambda_1000 = lambda * 100;
 }
 
 static struct mptcp_sched_ops mptcp_blest = {
@@ -667,7 +678,7 @@ static struct mptcp_sched_ops mptcp_blest = {
 
 static int __init blest_register(void)
 {
-	BUILD_BUG_ON(sizeof(struct defsched_priv) > MPTCP_SCHED_SIZE);
+	BUILD_BUG_ON(sizeof(struct defsched_priv) + sizeof(struct blestsched_priv) > MPTCP_SCHED_SIZE);
 
 	if (mptcp_register_scheduler(&mptcp_blest))
 		return -1;
