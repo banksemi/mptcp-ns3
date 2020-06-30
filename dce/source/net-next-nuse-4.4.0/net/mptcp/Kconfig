@@ -78,6 +78,15 @@ menuconfig MPTCP_SCHED_ADVANCED
 
 if MPTCP_SCHED_ADVANCED
 
+config MPTCP_REDUNDANT
+	tristate "MPTCP Redundant"
+	depends on (MPTCP=y)
+	---help---
+	  This is a very simple redundant scheduler, which floods each MPTCP segment
+	  through all the available TCP subflows. It has a bad throughput but it might
+	  be interesting for researchers focused on applications with low throughput but
+	  high latency and jitter demands. 
+
 config MPTCP_BLEST
         tristate "MPTCP BLEST"
         depends on (MPTCP=y)
