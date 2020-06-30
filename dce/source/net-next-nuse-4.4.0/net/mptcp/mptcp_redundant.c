@@ -386,7 +386,7 @@ begin:
 	if (skb) {
 		// Reinjected or Redundant skb
 		*reinject = 1;
-
+		printk("redundant: open reinject queue seq=%d\n",TCP_SKB_CB(skb)->seq);
 		if (TCP_SKB_CB(skb)->dss[1] == 1) {
 			// Additional checks for a redundant skb
 			struct sock *subsk = get_available_subflow(meta_sk,
@@ -395,7 +395,7 @@ begin:
 			struct tcp_sock *tp;
 
 			if (!subsk) {
-				pr_debug("redundant skb: deleted because of "
+				printk("redundant skb: deleted because of "
 					 "no-path\n");
 				skb_unlink(skb, &mpcb->reinject_queue);
 				__kfree_skb(skb);
@@ -406,7 +406,7 @@ begin:
 			if (TCP_SKB_CB(skb)->path_mask == 0 ||
 			    TCP_SKB_CB(skb)->path_mask &
 			    mptcp_pi_to_flag(tp->mptcp->path_index)) {
-				pr_debug("redundant skb: deleted because of "
+				printk("redundant skb: deleted because of "
 					 "no-desired-path (provided path %u, "
 					 "wanted by path_mask %u)\n",
 					 tp->mptcp->path_index,
@@ -416,12 +416,13 @@ begin:
 				goto begin;
 			}
 
-			pr_debug("redundant skb: passed (provided path %u, "
+			printk("redundant skb: passed (provided path %u, "
 				 "wanted by path-mask %u)\n",
 				 tp->mptcp->path_index,
 				 (-1u ^ TCP_SKB_CB(skb)->path_mask));
 
 		}
+		printk("redundant: selected this skb for redundant!! seq=%d\n",TCP_SKB_CB(skb)->seq);
 	} else {
 		// Normal skb
 		skb = tcp_send_head(meta_sk);
@@ -494,6 +495,7 @@ static struct sk_buff *redundant_next_segment(struct sock *meta_sk,
 			if ((sk != *subsk) && subflow_is_active(tp)) {
 				/* This is an additional active sk!! */
 				copy_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
+				printk("enqueue seq=%d, copy_seq=%d\n",TCP_SKB_CB(skb)->seq, TCP_SKB_CB(copy_skb)->seq);
 				if (unlikely(!copy_skb))
 					continue;
 				copy_skb->sk = meta_sk;
@@ -518,7 +520,7 @@ static struct sk_buff *redundant_next_segment(struct sock *meta_sk,
 			}
 		}
 	}
-
+	printk("send seq=%d, path=%u\n",TCP_SKB_CB(skb)->seq, subtp->mptcp->path_index);
 	/* No splitting required, as we will only send one single segment */
 	if (skb->len <= mss_now)
 		return skb;
