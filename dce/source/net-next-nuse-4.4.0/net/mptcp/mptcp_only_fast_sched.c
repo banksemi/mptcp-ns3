@@ -8,12 +8,22 @@ static LIST_HEAD(mptcp_sched_list);
 
 struct defsched_priv {
 	u32	last_rbuf_opti;
+	bool rtt_check;
+	struct sk_buff *rtt_check_buf;
 };
 
 static struct defsched_priv *defsched_get_priv(const struct tcp_sock *tp)
 {
 	return (struct defsched_priv *)&tp->mptcp->mptcp_sched[0];
 }
+
+static struct defsched_priv *metasched_get_priv(const struct tcp_sock *meta_tp)
+{
+	struct mptcp_cb *mpcb = meta_tp->mpcb;
+	struct tcp_sock *first_tp = mpcb->connection_list; // first connection
+	return defsched_get_priv(first_tp);
+}
+
 
 static bool mptcp_is_def_unavailable(struct sock *sk)
 {
@@ -143,6 +153,10 @@ static struct sock
 	bool found_unused_una = false;
 	struct sock *sk;
 
+	/* Initialization to find fast flow*/
+	struct sock *fastsk = NULL, *slowsk = NULL;
+	u32 fast_srtt = 0xffffffff, slow_srtt = 0;
+
 	mptcp_for_each_sk(mpcb, sk) {
 		struct tcp_sock *tp = tcp_sk(sk);
 		bool unused = false;
@@ -150,6 +164,18 @@ static struct sock
 		/* First, we choose only the wanted sks */
 		if (!(*selector)(tp))
 			continue;
+
+		/* Find Fast Flow in selection flows */
+		if (!mptcp_is_def_unavailable(sk) && tcp_sk(sk)->srtt_us) {
+			if (fast_srtt > tp->srtt_us) {
+				fast_srtt = tp->srtt_us;
+				fastsk = sk;
+			}
+			if (slow_srtt < tp->srtt_us) {
+				slow_srtt = tp->srtt_us;
+				slowsk = sk;
+			}
+		}
 
 		if (!mptcp_dont_reinject_skb(tp, skb))
 			unused = true;
@@ -202,6 +228,27 @@ static struct sock
 			*force = true;
 		else
 			*force = false;
+	}
+
+	/* Select Fast flow or Slow Flow */
+	if (skb && mpcb->cnt_established >= 2 && bestsk && (fastsk && slowsk) && fastsk != slowsk) { 
+		struct sock *meta_sk = mptcp_meta_sk(bestsk);
+		struct tcp_sock *meta_tp = tcp_sk(meta_sk);
+		struct tcp_sock *fasttp = tcp_sk(fastsk);
+		struct tcp_sock *slowtp = tcp_sk(slowsk); 
+	
+		struct defsched_priv *dsp = metasched_get_priv(meta_tp);
+		if (skb == dsp->rtt_check_buf) { 
+			//return slowtp;
+			// 이미 요청 했을때는 일딴 slow로 빠르게 보내서 reinject queue때문에 fast 플로우로 갈려는 패킷을 막는 현상이 발생하지 않도록 해야함. (무시)
+			if (!tcp_packets_in_flight(slowtp)) { 
+				return slowtp; 
+			} 
+		} else if (bestsk == slowsk) { 
+			if (!tcp_packets_in_flight(slowtp))  
+				dsp->rtt_check = true; // 다음번 세그먼트는 RTT 체크용으로 요청 
+			return NULL; 
+		} 
 	}
 
 	return bestsk;
@@ -412,6 +459,12 @@ static struct sk_buff *mptcp_next_segment(struct sock *meta_sk,
 			return NULL;
 	}
 
+	if (TCP_SKB_CB(skb)->path_mask == 0)
+	{
+		struct defsched_priv *dsp = metasched_get_priv(tcp_sk(meta_sk));
+		dsp->rtt_check_buf = skb;
+	}
+
 	/* No splitting required, as we will only send one single segment */
 	if (skb->len <= mss_now)
 		return skb;
@@ -450,6 +503,8 @@ static void defsched_init(struct sock *sk)
 	struct defsched_priv *dsp = defsched_get_priv(tcp_sk(sk));
 
 	dsp->last_rbuf_opti = tcp_time_stamp;
+	dsp->rtt_check = false;
+	dsp->rtt_check_buf = NULL;
 }
 
 struct mptcp_sched_ops mptcp_only_fast = {
