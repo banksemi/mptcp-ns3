@@ -101,6 +101,10 @@ config MPTCP_ROUNDROBIN
 	  This is a very simple round-robin scheduler. Probably has bad performance
 	  but might be interesting for researchers.
 
+config MPTCP_ONLY_FAST
+	tristate "MPTCP Only-Fast Scheduler"
+	depends on (MPTCP=y)
+
 choice
 	prompt "Default MPTCP Scheduler"
 	default DEFAULT
