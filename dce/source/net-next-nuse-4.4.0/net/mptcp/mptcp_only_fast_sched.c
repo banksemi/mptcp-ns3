@@ -397,24 +397,26 @@ begin:
 
 	if (skb) {
 		*reinject = 1;
-		struct sock *subsk = get_available_subflow(meta_sk,
-								   skb,
-								   false);
-		struct tcp_sock *tp = tcp_sk(subsk);
-		if (!subsk) {
-			/* There is no available subflow */
-			skb_unlink(skb, &mpcb->reinject_queue);
-			__kfree_skb(skb);
-			goto begin;
-		}
+		if (TCP_SKB_CB(skb)->dss[1] == 1) {
+			struct sock *subsk = get_available_subflow(meta_sk,
+									skb,
+									false);
+			struct tcp_sock *tp = tcp_sk(subsk);
+			if (!subsk) {
+				/* There is no available subflow */
+				skb_unlink(skb, &mpcb->reinject_queue);
+				__kfree_skb(skb);
+				goto begin;
+			}
 
-		if (TCP_SKB_CB(skb)->path_mask == 0 ||
-			TCP_SKB_CB(skb)->path_mask &
-			mptcp_pi_to_flag(tp->mptcp->path_index)) {
-			/* The specified path cannot be used. */
-			skb_unlink(skb, &mpcb->reinject_queue);
-			__kfree_skb(skb);
-			goto begin;
+			if (TCP_SKB_CB(skb)->path_mask == 0 ||
+				TCP_SKB_CB(skb)->path_mask &
+				mptcp_pi_to_flag(tp->mptcp->path_index)) {
+				/* The specified path cannot be used. */
+				skb_unlink(skb, &mpcb->reinject_queue);
+				__kfree_skb(skb);
+				goto begin;
+			}
 		}
 	} else {
 		skb = tcp_send_head(meta_sk);
