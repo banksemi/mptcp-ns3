@@ -74,8 +74,10 @@ int main (int argc, char *argv[]) {
     LogComponentEnable ("DceMptcpTest", LOG_LEVEL_ALL);
     uint32_t nRtrs = 2;
     CommandLine cmd;
+    std::string sched = "default";
+    cmd.AddValue ("sched", "sched value", sched);
     cmd.Parse (argc, argv);
-
+    NS_LOG_UNCOND ("sched " << sched);
     NodeContainer nodes, routers;
     nodes.Create (2);
     routers.Create (nRtrs);
@@ -152,7 +154,7 @@ int main (int argc, char *argv[]) {
 
 
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_enabled", "1");
-    stack.SysctlSet(nodes, ".net.mptcp.mptcp_scheduler", "default");
+    stack.SysctlSet(nodes, ".net.mptcp.mptcp_scheduler", sched);
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_checksum", "1");
     // stack.SysctlSet(nodes, ".net.ipv4.tcp_rmem", "500000 500000 500000");
     

@@ -11,5 +11,6 @@ cd ./source/ns-3-dce
 if [ $# -ne 1 ]; then
     ./waf --run test-standard
 else
-    ./waf --run $1 --command-template="gdb %s"
+    ./waf --run "$@"
 fi
+# --command-template="gdb %s"
