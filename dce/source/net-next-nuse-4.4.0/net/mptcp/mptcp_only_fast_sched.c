@@ -3,6 +3,11 @@
 #include <linux/module.h>
 #include <net/mptcp.h>
 
+/* Same as mptcp_dss_len from mptcp_output.c */
+static const int mptcp_dss_len = MPTCP_SUB_LEN_DSS_ALIGN +
+				 MPTCP_SUB_LEN_ACK_ALIGN +
+				 MPTCP_SUB_LEN_SEQ_ALIGN;
+
 static DEFINE_SPINLOCK(mptcp_sched_list_lock);
 static LIST_HEAD(mptcp_sched_list);
 
@@ -119,6 +124,35 @@ static int mptcp_dont_reinject_skb(const struct tcp_sock *tp, const struct sk_bu
 		mptcp_pi_to_flag(tp->mptcp->path_index) & TCP_SKB_CB(skb)->path_mask;
 }
 
+/* Function that returns the slowest pass of established subflows */
+static struct sock *get_slow_socket(struct mptcp_cb *mpcb) {
+	struct sock *sk;
+
+	/* Initialization to find fast flow*/
+	struct sock *fastsk = NULL, *slowsk = NULL;
+	u32 fast_srtt = 0xffffffff, slow_srtt = 0;
+
+	mptcp_for_each_sk(mpcb, sk) {
+		struct tcp_sock *tp = tcp_sk(sk);
+		bool unused = false;
+
+		/* Find Fast Flow in selection flows */
+		if (!mptcp_is_def_unavailable(sk) && tcp_sk(sk)->srtt_us) {
+			if (fast_srtt > tp->srtt_us) {
+				fast_srtt = tp->srtt_us;
+				fastsk = sk;
+			}
+			if (slow_srtt < tp->srtt_us) {
+				slow_srtt = tp->srtt_us;
+				slowsk = sk;
+			}
+		}
+	}
+	if (mpcb->cnt_established >= 2 && (fastsk && slowsk) && fastsk != slowsk)
+		return slowsk;
+	return NULL;
+}
+
 static bool subflow_is_backup(const struct tcp_sock *tp)
 {
 	return tp->mptcp->rcv_low_prio || tp->mptcp->low_prio;
@@ -203,6 +237,8 @@ static struct sock
 		else
 			*force = false;
 	}
+	if (TCP_SKB_CB(skb)->path_mask == 0 && bestsk == get_slow_socket(mpcb))
+		return NULL;
 
 	return bestsk;
 }
@@ -348,9 +384,9 @@ retrans:
  */
 static struct sk_buff *__mptcp_next_segment(struct sock *meta_sk, int *reinject)
 {
-	const struct mptcp_cb *mpcb = tcp_sk(meta_sk)->mpcb;
+	struct mptcp_cb *mpcb = tcp_sk(meta_sk)->mpcb;
 	struct sk_buff *skb = NULL;
-
+begin:
 	*reinject = 0;
 
 	/* If we are in fallback-mode, just take from the meta-send-queue */
@@ -361,6 +397,27 @@ static struct sk_buff *__mptcp_next_segment(struct sock *meta_sk, int *reinject)
 
 	if (skb) {
 		*reinject = 1;
+		if (TCP_SKB_CB(skb)->dss[1] == 1) {
+			struct sock *subsk = get_available_subflow(meta_sk,
+									skb,
+									false);
+			struct tcp_sock *tp = tcp_sk(subsk);
+			if (!subsk) {
+				/* There is no available subflow */
+				skb_unlink(skb, &mpcb->reinject_queue);
+				__kfree_skb(skb);
+				goto begin;
+			}
+
+			if (TCP_SKB_CB(skb)->path_mask == 0 ||
+				TCP_SKB_CB(skb)->path_mask &
+				mptcp_pi_to_flag(tp->mptcp->path_index)) {
+				/* The specified path cannot be used. */
+				skb_unlink(skb, &mpcb->reinject_queue);
+				__kfree_skb(skb);
+				goto begin;
+			}
+		}
 	} else {
 		skb = tcp_send_head(meta_sk);
 
@@ -410,6 +467,33 @@ static struct sk_buff *mptcp_next_segment(struct sock *meta_sk,
 			*reinject = -1;
 		else
 			return NULL;
+	}
+
+	const struct tcp_sock *meta_tp = tcp_sk(meta_sk);
+	struct mptcp_cb *mpcb = meta_tp->mpcb;
+	struct sock *slowsk = get_slow_socket(mpcb);
+	if (slowsk != NULL) {
+		struct tcp_sock *slowtp = tcp_sk(slowsk);
+
+		/* If there are no packets in flight on the slow path, and the packet to be sent now is not an injected packet */
+		if (!tcp_packets_in_flight(slowtp) && TCP_SKB_CB(skb)->path_mask == 0) {
+			struct mptcp_cb *mpcb = meta_tp->mpcb;
+			struct sock *slowsk = get_slow_socket(mpcb);
+			/* Copy SKB */
+			struct sk_buff *copy_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
+			if (likely(copy_skb)) { /* SKB isn't NULL */
+				copy_skb->sk = meta_sk;
+				if (!after(TCP_SKB_CB(copy_skb)->end_seq, meta_tp->snd_una)) {
+					__kfree_skb(copy_skb);
+				} else {
+					memset(TCP_SKB_CB(copy_skb)->dss, 0 , mptcp_dss_len);
+					TCP_SKB_CB(copy_skb)->path_mask = mptcp_pi_to_flag(tcp_sk(slowsk)->mptcp->path_index);
+					TCP_SKB_CB(copy_skb)->path_mask ^= -1u;
+					TCP_SKB_CB(copy_skb)->dss[1] = 1;
+					skb_queue_tail(&mpcb->reinject_queue, copy_skb);
+				}
+			}
+		}
 	}
 
 	/* No splitting required, as we will only send one single segment */
