@@ -86,6 +86,70 @@ static inline int mptcp_tso_acked_reinject(const struct sock *meta_sk,
 
 	return packets_acked;
 }
+static void mptcp_rtt_estimator(struct sock *sk, long mrtt_us)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+	long m = mrtt_us; /* RTT */
+	u32 srtt = tp->srtt_us;
+
+	/*	The following amusing code comes from Jacobson's
+	 *	article in SIGCOMM '88.  Note that rtt and mdev
+	 *	are scaled versions of rtt and mean deviation.
+	 *	This is designed to be as fast as possible
+	 *	m stands for "measurement".
+	 *
+	 *	On a 1990 paper the rto value is changed to:
+	 *	RTO = rtt + 4 * mdev
+	 *
+	 * Funny. This algorithm seems to be very broken.
+	 * These formulae increase RTO, when it should be decreased, increase
+	 * too slowly, when it should be increased quickly, decrease too quickly
+	 * etc. I guess in BSD RTO takes ONE value, so that it is absolutely
+	 * does not matter how to _calculate_ it. Seems, it was trap
+	 * that VJ failed to avoid. 8)
+	 */
+	if (srtt != 0) {
+		m -= (srtt >> 3);	/* m is now error in rtt est */
+		srtt += m;		/* rtt = 7/8 rtt + 1/8 new */
+		if (m < 0) {
+			m = -m;		/* m is now abs(error) */
+			m -= (tp->mdev_us >> 2);   /* similar update on mdev */
+			/* This is similar to one of Eifel findings.
+			 * Eifel blocks mdev updates when rtt decreases.
+			 * This solution is a bit different: we use finer gain
+			 * for mdev in this case (alpha*beta).
+			 * Like Eifel it also prevents growth of rto,
+			 * but also it limits too fast rto decreases,
+			 * happening in pure Eifel.
+			 */
+			if (m > 0)
+				m >>= 3;
+		} else {
+			m -= (tp->mdev_us >> 2);   /* similar update on mdev */
+		}
+		tp->mdev_us += m;		/* mdev = 3/4 mdev + 1/4 new */
+		if (tp->mdev_us > tp->mdev_max_us) {
+			tp->mdev_max_us = tp->mdev_us;
+			if (tp->mdev_max_us > tp->rttvar_us)
+				tp->rttvar_us = tp->mdev_max_us;
+		}
+		if (after(tp->snd_una, tp->rtt_seq)) {
+			if (tp->mdev_max_us < tp->rttvar_us)
+				tp->rttvar_us -= (tp->rttvar_us - tp->mdev_max_us) >> 2;
+			tp->rtt_seq = tp->snd_nxt;
+			tp->mdev_max_us = tcp_rto_min_us(sk);
+		}
+	} else {
+		/* no previous measure. */
+		srtt = m << 3;		/* take the measured time to be rtt */
+		tp->mdev_us = m << 1;	/* make sure rto = 3*rtt */
+		tp->rttvar_us = max(tp->mdev_us, tcp_rto_min_us(sk));
+		tp->mdev_max_us = tp->rttvar_us;
+		tp->rtt_seq = tp->snd_nxt;
+	}
+	tp->srtt_us = max(1U, srtt);
+}
+
 
 /**
  * Cleans the meta-socket retransmission queue and the reinject-queue.
@@ -94,10 +158,15 @@ static inline int mptcp_tso_acked_reinject(const struct sock *meta_sk,
 static void mptcp_clean_rtx_queue(struct sock *meta_sk, u32 prior_snd_una)
 {
 	struct sk_buff *skb, *tmp;
+	struct skb_mstamp first_ackt, last_ackt, now;
 	struct tcp_sock *meta_tp = tcp_sk(meta_sk);
 	struct mptcp_cb *mpcb = meta_tp->mpcb;
+	struct sk_buff *first_skb;
+	long ca_seq_rtt_us = -1L;
+	long seq_rtt_us = -1L;
 	bool acked = false;
 	u32 acked_pcount;
+	first_ackt.v64 = 0;
 
 	while ((skb = tcp_write_queue_head(meta_sk)) &&
 	       skb != tcp_send_head(meta_sk)) {
@@ -115,6 +184,13 @@ static void mptcp_clean_rtx_queue(struct sock *meta_sk, u32 prior_snd_una)
 			fully_acked = false;
 		} else {
 			acked_pcount = tcp_skb_pcount(skb);
+		}
+		last_ackt = skb->skb_mstamp;
+		WARN_ON_ONCE(last_ackt.v64 == 0);
+		if (!first_ackt.v64)
+		{
+			first_ackt = last_ackt;
+			first_skb = skb;
 		}
 
 		acked = true;
@@ -165,6 +241,17 @@ static void mptcp_clean_rtx_queue(struct sock *meta_sk, u32 prior_snd_una)
 
 	if (likely(between(meta_tp->snd_up, prior_snd_una, meta_tp->snd_una)))
 		meta_tp->snd_up = meta_tp->snd_una;
+
+	skb_mstamp_get(&now);
+	if (likely(first_ackt.v64)) {
+		seq_rtt_us = skb_mstamp_us_delta(&now, &first_ackt);
+		ca_seq_rtt_us = skb_mstamp_us_delta(&now, &last_ackt);
+
+		mptcp_rtt_estimator(meta_sk, seq_rtt_us);
+		if (TCP_SKB_CB(first_skb)->transmission_count == 1)
+			printk("rtt,%ld,%d,%d",0,tcp_time_stamp,seq_rtt_us / 1000);
+	}
+
 
 	if (acked) {
 		tcp_rearm_rto(meta_sk);

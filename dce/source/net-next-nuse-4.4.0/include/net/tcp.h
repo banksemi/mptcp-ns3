@@ -843,6 +843,7 @@ struct tcp_skb_cb {
 	__u8		mptcp_flags;	/* flags for the MPTCP layer    */
 	__u8		dss_off;	/* Number of 4-byte words until
 					 * seq-number */
+	__u8        transmission_count;
 #endif
 	__u8		tcp_flags;	/* TCP header flags. (tcp[13])	*/
 

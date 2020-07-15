@@ -742,6 +742,7 @@ static void tcp_rtt_estimator(struct sock *sk, long mrtt_us)
 		tp->mdev_max_us = tp->rttvar_us;
 		tp->rtt_seq = tp->snd_nxt;
 	}
+	printk("rtt,%d,%d,%d",((int)tp) % 10000,tcp_time_stamp,mrtt_us / 1000);
 	tp->srtt_us = max(1U, srtt);
 }
 

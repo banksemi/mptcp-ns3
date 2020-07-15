@@ -725,6 +725,7 @@ bool mptcp_write_xmit(struct sock *meta_sk, unsigned int mss_now, int nonagle,
 		 */
 		__tcp_push_pending_frames(subsk, mss_now, TCP_NAGLE_PUSH);
 		path_mask |= mptcp_pi_to_flag(subtp->mptcp->path_index);
+		TCP_SKB_CB(skb)->transmission_count++;
 		skb_mstamp_get(&skb->skb_mstamp);
 
 		if (!reinject) {
