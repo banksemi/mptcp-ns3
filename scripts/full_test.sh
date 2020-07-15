@@ -13,3 +13,6 @@ cp ../../source/ns-3-dce/files-1/var/log/messages ../logs/blest.txt
 
 ./dce-run.sh "test-standard --sched=redundant"
 cp ../../source/ns-3-dce/files-1/var/log/messages ../logs/redundant.txt
+
+./dce-run.sh "test-standard --sched=only_fast"
+cp ../../source/ns-3-dce/files-1/var/log/messages ../logs/only_fast.txt
