@@ -75,7 +75,9 @@ int main (int argc, char *argv[]) {
     uint32_t nRtrs = 2;
     CommandLine cmd;
     std::string sched = "default";
+    bool rtt_change = false;
     cmd.AddValue ("sched", "sched value", sched);
+    cmd.AddValue ("rtt_change", "rtt_change value", rtt_change);
     cmd.Parse (argc, argv);
     NS_LOG_UNCOND ("sched " << sched);
     NodeContainer nodes, routers;
@@ -191,15 +193,16 @@ int main (int argc, char *argv[]) {
 
 
     int _switch = 0;
-    Simulator::Schedule(Seconds(1), &ChangeRTT, 0 , StringValue("100Mbps"), StringValue("5ms")); // start UE movement
-    Simulator::Schedule(Seconds(1), &ChangeRTT, 1, StringValue("100Mbps"), StringValue("10ms")); // start UE movement
-    /*
-    for(int i = 2; i<32; i += 5) {
-        Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch) % 2, StringValue("100Mbps"), StringValue("50ms")); // start UE movement
-        Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch + 1) % 2, StringValue("100Mbps"), StringValue("10ms")); // start UE movement
-        _switch++;
-	}
-    */
+    if (rtt_change) {
+        for(int i = 2; i<32; i += 1) {
+            Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch) % 2, StringValue("100Mbps"), StringValue("5ms")); // start UE movement
+            Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch + 1) % 2, StringValue("100Mbps"), StringValue("30ms")); // start UE movement
+            _switch++;
+	    }
+    } else {
+        Simulator::Schedule(Seconds(1), &ChangeRTT, 0 , StringValue("100Mbps"), StringValue("5ms")); // start UE movement
+        Simulator::Schedule(Seconds(1), &ChangeRTT, 1, StringValue("30Mbps"), StringValue("30ms")); // start UE movement
+    }
 
     pointToPoint.EnablePcapAll ("../../pcap/pcap_file");
     
