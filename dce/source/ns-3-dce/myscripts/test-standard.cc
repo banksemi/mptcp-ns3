@@ -76,10 +76,16 @@ int main (int argc, char *argv[]) {
     CommandLine cmd;
     std::string sched = "default";
     bool rtt_change = false;
+    std::string bandwidth = "0";
+
     cmd.AddValue ("sched", "sched value", sched);
     cmd.AddValue ("rtt_change", "rtt_change value", rtt_change);
+    cmd.AddValue ("bandwidth", "bandwidth value", bandwidth);
     cmd.Parse (argc, argv);
+
     NS_LOG_UNCOND ("sched " << sched);
+    NS_LOG_UNCOND ("bandwidth " << bandwidth);
+    
     NodeContainer nodes, routers;
     nodes.Create (2);
     routers.Create (nRtrs);
@@ -174,6 +180,8 @@ int main (int argc, char *argv[]) {
     dce.AddArgument ("1.0");
     dce.AddArgument ("--time");
     dce.AddArgument ("30");
+    dce.AddArgument ("--bandwidth");
+    dce.AddArgument (bandwidth);
     //dce.AddArgument ("--json");
     dce.AddArgument ("-R");
     apps = dce.Install (nodes.Get (0));
