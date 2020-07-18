@@ -202,7 +202,7 @@ int main (int argc, char *argv[]) {
 
     int _switch = 0;
     if (rtt_change) {
-        for(int i = 2; i<32; i += 1) {
+        for(int i = 2; i<32; i += 5) {
             Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch) % 2, StringValue("100Mbps"), StringValue("5ms")); // start UE movement
             Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch + 1) % 2, StringValue("30Mbps"), StringValue("30ms")); // start UE movement
             _switch++;
