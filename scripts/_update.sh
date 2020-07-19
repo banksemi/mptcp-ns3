@@ -5,5 +5,5 @@ function CodeCopy() {
 	echo Copy: '../dce/source/'$1 '../../source/'$1'/../' -R -f
 }
 
-CodeCopy "net-next-nuse-4.4.0"
+CodeCopy "net-next-nuse-4.4.0/net/mptcp"
 CodeCopy "ns-3-dce/myscripts"
