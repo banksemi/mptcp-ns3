@@ -1,5 +1,5 @@
 /*
- * iperf, Copyright (c) 2014-2020, The Regents of the University of
+ * iperf, Copyright (c) 2014, 2015, The Regents of the University of
  * California, through Lawrence Berkeley National Laboratory (subject
  * to receipt of any required approvals from the U.S. Dept. of
  * Energy).  All rights reserved.
@@ -33,8 +33,6 @@
 #include "iperf.h"
 #include "iperf_api.h"
 
-int gerror;
-
 /* Do a printf to stderr. */
 void
 iperf_err(struct iperf_test *test, const char *format, ...)
@@ -47,7 +45,7 @@ iperf_err(struct iperf_test *test, const char *format, ...)
     if (test != NULL && test->json_output && test->json_top != NULL)
 	cJSON_AddStringToObject(test->json_top, "error", str);
     else
-	if (test && test->outfile && test->outfile != stdout) {
+	if (test && test->outfile) {
 	    fprintf(test->outfile, "iperf3: %s\n", str);
 	}
 	else {
@@ -69,22 +67,21 @@ iperf_errexit(struct iperf_test *test, const char *format, ...)
 	cJSON_AddStringToObject(test->json_top, "error", str);
 	iperf_json_finish(test);
     } else
-	if (test && test->outfile && test->outfile != stdout) {
+	if (test && test->outfile) {
 	    fprintf(test->outfile, "iperf3: %s\n", str);
 	}
 	else {
 	    fprintf(stderr, "iperf3: %s\n", str);
 	}
     va_end(argp);
-    if (test)
-        iperf_delete_pidfile(test);
+    iperf_delete_pidfile(test);
     exit(1);
 }
 
 int i_errno;
 
 char *
-iperf_strerror(int int_errno)
+iperf_strerror(int i_errno)
 {
     static char errstr[256];
     int len, perr, herr;
@@ -93,7 +90,7 @@ iperf_strerror(int int_errno)
     len = sizeof(errstr);
     memset(errstr, 0, len);
 
-    switch (int_errno) {
+    switch (i_errno) {
         case IENONE:
             snprintf(errstr, len, "no error");
             break;
@@ -124,26 +121,14 @@ iperf_strerror(int int_errno)
         case IEINTERVAL:
             snprintf(errstr, len, "invalid report interval (min = %g, max = %g seconds)", MIN_INTERVAL, MAX_INTERVAL);
             break;
-    case IEBIND: /* UNUSED */
+        case IEBIND:
             snprintf(errstr, len, "--bind must be specified to use --cport");
             break;
         case IEUDPBLOCKSIZE:
-            snprintf(errstr, len, "block size invalid (minimum = %d bytes, maximum = %d bytes)", MIN_UDP_BLOCKSIZE, MAX_UDP_BLOCKSIZE);
+            snprintf(errstr, len, "block size too large (maximum = %d bytes)", MAX_UDP_BLOCKSIZE);
             break;
-        case IEBADTOS:
-            snprintf(errstr, len, "bad TOS value (must be between 0 and 255 inclusive)");
-            break;
-        case IESETCLIENTAUTH:
-             snprintf(errstr, len, "you must specify a username, password, and path to a valid RSA public key");
-            break;
-        case IESETSERVERAUTH:
-             snprintf(errstr, len, "you must specify a path to a valid RSA private key and a user credential file");
-            break;
-	case IEBADFORMAT:
-	    snprintf(errstr, len, "bad format specifier (valid formats are in the set [kmgtKMGT])");
-	    break;
-	case IEBADPORT:
-	    snprintf(errstr, len, "port number must be between 1 and 65535 inclusive");
+	case IEBADTOS:
+	    snprintf(errstr, len, "bad TOS value (must be between 0 and 255 inclusive)");
 	    break;
         case IEMSS:
             snprintf(errstr, len, "TCP MSS too large (maximum = %d bytes)", MAX_MSS);
@@ -182,18 +167,13 @@ iperf_strerror(int int_errno)
             snprintf(errstr, len, "test initialization failed");
             perr = 1;
             break;
-        case IEAUTHTEST:
-            snprintf(errstr, len, "test authorization failed");
-            break;
         case IELISTEN:
             snprintf(errstr, len, "unable to start listener for connections");
-	    herr = 1;
             perr = 1;
             break;
         case IECONNECT:
             snprintf(errstr, len, "unable to connect to server");
             perr = 1;
-	    herr = 1;
             break;
         case IEACCEPT:
             snprintf(errstr, len, "unable to accept connection from client");
@@ -321,7 +301,6 @@ iperf_strerror(int int_errno)
             break;
         case IESTREAMLISTEN:
             snprintf(errstr, len, "unable to start stream listener");
-	    herr = 1;
             perr = 1;
             break;
         case IESTREAMCONNECT:
@@ -375,29 +354,14 @@ iperf_strerror(int int_errno)
             snprintf(errstr, len, "unable to set SCTP_INIT num of SCTP streams\n");
             perr = 1;
             break;
-	case IESETPACING:
-	    snprintf(errstr, len, "unable to set socket pacing");
-	    perr = 1;
-	    break;
-	case IESETBUF2:
-	    snprintf(errstr, len, "socket buffer size not set correctly");
-	    break;
-	case IEREVERSEBIDIR:
-	    snprintf(errstr, len, "cannot be both reverse and bidirectional");
-            break;
-	case IETOTALRATE:
-	    snprintf(errstr, len, "total required bandwidth is larger than server limit");
-            break;
     }
 
-    /* Append the result of strerror() or gai_strerror() if appropriate */
     if (herr || perr)
         strncat(errstr, ": ", len - strlen(errstr) - 1);
-    if (errno && perr)
+    if (h_errno && herr) {
+        strncat(errstr, hstrerror(h_errno), len - strlen(errstr) - 1);
+    } else if (errno && perr) {
         strncat(errstr, strerror(errno), len - strlen(errstr) - 1);
-    else if (herr && gerror) {
-        strncat(errstr, gai_strerror(gerror), len - strlen(errstr) - 1);
-	gerror = 0;
     }
 
     return errstr;

@@ -1,5 +1,5 @@
 /*
- * iperf, Copyright (c) 2014, 2016, 2017, The Regents of the University of
+ * iperf, Copyright (c) 2014, The Regents of the University of
  * California, through Lawrence Berkeley National Laboratory (subject
  * to receipt of any required approvals from the U.S. Dept. of
  * Energy).  All rights reserved.
@@ -32,7 +32,6 @@
 #include "iperf_config.h"
 
 #include <stdio.h>
-#include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -44,61 +43,8 @@
 #include <sys/utsname.h>
 #include <time.h>
 #include <errno.h>
-#include <fcntl.h>
 
 #include "cjson.h"
-#include "iperf.h"
-#include "iperf_api.h"
-
-/*
- * Read entropy from /dev/urandom
- * Errors are fatal.
- * Returns 0 on success.
- */
-int readentropy(void *out, size_t outsize)
-{
-    static FILE *frandom;
-    static const char rndfile[] = "/dev/urandom";
-
-    if (!outsize) return 0;
-
-    if (frandom == NULL) {
-        frandom = fopen(rndfile, "rb");
-        if (frandom == NULL) {
-            iperf_errexit(NULL, "error - failed to open %s: %s\n",
-                          rndfile, strerror(errno));
-        }
-        setbuf(frandom, NULL);
-    }
-    if (fread(out, 1, outsize, frandom) != outsize) {
-        iperf_errexit(NULL, "error - failed to read %s: %s\n",
-                      rndfile,
-                      feof(frandom) ? "EOF" : strerror(errno));
-    }
-    return 0;
-}
-
-
-/*
- * Fills buffer with repeating pattern (similar to pattern that used in iperf2)
- */
-void fill_with_repeating_pattern(void *out, size_t outsize)
-{
-    size_t i;
-    int counter = 0;
-    char *buf = (char *)out;
-
-    if (!outsize) return;
-
-    for (i = 0; i < outsize; i++) {
-        buf[i] = (char)('0' + counter);
-        if (counter >= 9)
-            counter = 0;
-        else
-            counter++;
-    }
-}
-
 
 /* make_cookie
  *
@@ -107,21 +53,27 @@ void fill_with_repeating_pattern(void *out, size_t outsize)
  * Iperf uses this function to create test "cookies" which
  * server as unique test identifiers. These cookies are also
  * used for the authentication of stream connections.
- * Assumes cookie has size (COOKIE_SIZE + 1) char's.
  */
 
 void
-make_cookie(const char *cookie)
+make_cookie(char *cookie)
 {
-    unsigned char *out = (unsigned char*)cookie;
-    size_t pos;
-    static const unsigned char rndchars[] = "abcdefghijklmnopqrstuvwxyz234567";
+    static int randomized = 0;
+    char hostname[500];
+    struct timeval tv;
+    char temp[1000];
 
-    readentropy(out, COOKIE_SIZE);
-    for (pos = 0; pos < (COOKIE_SIZE - 1); pos++) {
-        out[pos] = rndchars[out[pos] % (sizeof(rndchars) - 1)];
-    }
-    out[pos] = '\0';
+    if ( ! randomized )
+        srandom((int) time(0) ^ getpid());
+
+    /* Generate a string based on hostname, time, randomness, and filler. */
+    (void) gethostname(hostname, sizeof(hostname));
+    (void) gettimeofday(&tv, 0);
+    (void) snprintf(temp, sizeof(temp), "%s.%ld.%06ld.%08lx%08lx.%s", hostname, (unsigned long int) tv.tv_sec, (unsigned long int) tv.tv_usec, (unsigned long int) random(), (unsigned long int) random(), "1234567890123456789012345678901234567890");
+
+    /* Now truncate it to 36 bytes and terminate. */
+    memcpy(cookie, temp, 36);
+    cookie[36] = '\0';
 }
 
 
@@ -186,13 +138,50 @@ timeval_diff(struct timeval * tv0, struct timeval * tv1)
     return time1;
 }
 
+
+int
+delay(int64_t ns)
+{
+    struct timespec req, rem;
+
+    req.tv_sec = 0;
+
+    while (ns >= 1000000000L) {
+        ns -= 1000000000L;
+        req.tv_sec += 1;
+    }
+
+    req.tv_nsec = ns;
+
+    while (nanosleep(&req, &rem) == -1)
+        if (EINTR == errno)
+            memcpy(&req, &rem, sizeof(rem));
+        else
+            return -1;
+    return 0;
+}
+
+# ifdef DELAY_SELECT_METHOD
+int
+delay(int us)
+{
+    struct timeval tv;
+
+    tv.tv_sec = 0;
+    tv.tv_usec = us;
+    (void) select(1, (fd_set *) 0, (fd_set *) 0, (fd_set *) 0, &tv);
+    return 1;
+}
+#endif
+
+
 void
 cpu_util(double pcpu[3])
 {
-    static struct iperf_time last;
+    static struct timeval last;
     static clock_t clast;
     static struct rusage rlast;
-    struct iperf_time now, temp_time;
+    struct timeval temp;
     clock_t ctemp;
     struct rusage rtemp;
     double timediff;
@@ -200,19 +189,18 @@ cpu_util(double pcpu[3])
     double systemdiff;
 
     if (pcpu == NULL) {
-        iperf_time_now(&last);
-        clast = clock();
+        gettimeofday(&last, NULL);
+        clast = 0;
 	getrusage(RUSAGE_SELF, &rlast);
         return;
     }
 
-    iperf_time_now(&now);
-    ctemp = clock();
+    gettimeofday(&temp, NULL);
+    ctemp = 0;
     getrusage(RUSAGE_SELF, &rtemp);
 
-    iperf_time_diff(&now, &last, &temp_time);
-    timediff = iperf_time_in_usecs(&temp_time);
-
+    timediff = ((temp.tv_sec * 1000000.0 + temp.tv_usec) -
+                (last.tv_sec * 1000000.0 + last.tv_usec));
     userdiff = ((rtemp.ru_utime.tv_sec * 1000000.0 + rtemp.ru_utime.tv_usec) -
                 (rlast.ru_utime.tv_sec * 1000000.0 + rlast.ru_utime.tv_usec));
     systemdiff = ((rtemp.ru_stime.tv_sec * 1000000.0 + rtemp.ru_stime.tv_usec) -
@@ -267,7 +255,7 @@ get_optional_features(void)
     numfeatures++;
 #endif /* HAVE_FLOWLABEL */
     
-#if defined(HAVE_SCTP_H)
+#if defined(HAVE_SCTP)
     if (numfeatures > 0) {
 	strncat(features, ", ", 
 		sizeof(features) - strlen(features) - 1);
@@ -275,7 +263,7 @@ get_optional_features(void)
     strncat(features, "SCTP", 
 	sizeof(features) - strlen(features) - 1);
     numfeatures++;
-#endif /* HAVE_SCTP_H */
+#endif /* HAVE_SCTP */
     
 #if defined(HAVE_TCP_CONGESTION)
     if (numfeatures > 0) {
@@ -296,26 +284,6 @@ get_optional_features(void)
 	sizeof(features) - strlen(features) - 1);
     numfeatures++;
 #endif /* HAVE_SENDFILE */
-
-#if defined(HAVE_SO_MAX_PACING_RATE)
-    if (numfeatures > 0) {
-	strncat(features, ", ",
-		sizeof(features) - strlen(features) - 1);
-    }
-    strncat(features, "socket pacing",
-	sizeof(features) - strlen(features) - 1);
-    numfeatures++;
-#endif /* HAVE_SO_MAX_PACING_RATE */
-
-#if defined(HAVE_SSL)
-    if (numfeatures > 0) {
-	strncat(features, ", ",
-		sizeof(features) - strlen(features) - 1);
-    }
-    strncat(features, "authentication",
-	sizeof(features) - strlen(features) - 1);
-    numfeatures++;
-#endif /* HAVE_SSL */
 
     if (numfeatures == 0) {
 	strncat(features, "None", 
@@ -372,22 +340,19 @@ iperf_json_printf(const char *format, ...)
 		j = cJSON_CreateBool(va_arg(argp, int));
 		break;
 		case 'd':
-		j = cJSON_CreateNumber(va_arg(argp, int64_t));
+		j = cJSON_CreateInt(va_arg(argp, int64_t));
 		break;
 		case 'f':
-		j = cJSON_CreateNumber(va_arg(argp, double));
+		j = cJSON_CreateFloat(va_arg(argp, double));
 		break;
 		case 's':
 		j = cJSON_CreateString(va_arg(argp, char *));
 		break;
 		default:
-		va_end(argp);
 		return NULL;
 	    }
-	    if (j == NULL) {
-	    	va_end(argp);
-	    	return NULL;
-	    }
+	    if (j == NULL)
+		return NULL;
 	    cJSON_AddItemToObject(o, name, j);
 	    np = name;
 	    break;
@@ -402,7 +367,7 @@ iperf_json_printf(const char *format, ...)
 
 /* Debugging routine to dump out an fd_set. */
 void
-iperf_dump_fdset(FILE *fp, const char *str, int nfds, fd_set *fds)
+iperf_dump_fdset(FILE *fp, char *str, int nfds, fd_set *fds)
 {
     int fd;
     int comma;
@@ -419,149 +384,3 @@ iperf_dump_fdset(FILE *fp, const char *str, int nfds, fd_set *fds)
     }
     fprintf(fp, "]\n");
 }
-
-/*
- * daemon(3) implementation for systems lacking one.
- * Cobbled together from various daemon(3) implementations,
- * not intended to be general-purpose. */
-#ifndef HAVE_DAEMON
-int daemon(int nochdir, int noclose)
-{
-    pid_t pid = 0;
-    pid_t sid = 0;
-    int fd;
-
-    /*
-     * Ignore any possible SIGHUP when the parent process exits.
-     * Note that the iperf3 server process will eventually install
-     * its own signal handler for SIGHUP, so we can be a little
-     * sloppy about not restoring the prior value.  This does not
-     * generalize.
-     */
-    signal(SIGHUP, SIG_IGN);
-
-    pid = fork();
-    if (pid < 0) {
-	    return -1;
-    }
-    if (pid > 0) {
-	/* Use _exit() to avoid doing atexit() stuff. */
-	_exit(0);
-    }
-
-    sid = setsid();
-    if (sid < 0) {
-	return -1;
-    }
-
-    /*
-     * Fork again to avoid becoming a session leader.
-     * This might only matter on old SVr4-derived OSs. 
-     * Note in particular that glibc and FreeBSD libc 
-     * only fork once.
-     */
-    pid = fork();
-    if (pid == -1) {
-	return -1;
-    } else if (pid != 0) {
-	_exit(0);
-    }
-
-    if (!nochdir) {
-	chdir("/");
-    }
-
-    if (!noclose && (fd = open("/dev/null", O_RDWR, 0)) != -1) {
-	dup2(fd, STDIN_FILENO);
-	dup2(fd, STDOUT_FILENO);
-	dup2(fd, STDERR_FILENO);
-	if (fd > 2) {
-	    close(fd);
-	}
-    }
-    return (0);
-}
-#endif /* HAVE_DAEMON */
-
-/* Compatibility version of getline(3) for systems that don't have it.. */
-#ifndef HAVE_GETLINE
-/* The following code adopted from NetBSD's getline.c, which is: */
-
-/*-
- * Copyright (c) 2011 The NetBSD Foundation, Inc.
- * All rights reserved.
- *
- * This code is derived from software contributed to The NetBSD Foundation
- * by Christos Zoulas.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE NETBSD FOUNDATION, INC. AND CONTRIBUTORS
- * ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
- * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE FOUNDATION OR CONTRIBUTORS
- * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- */
-ssize_t
-getdelim(char **buf, size_t *bufsiz, int delimiter, FILE *fp)
-{
-	char *ptr, *eptr;
-
-
-	if (*buf == NULL || *bufsiz == 0) {
-		*bufsiz = BUFSIZ;
-		if ((*buf = malloc(*bufsiz)) == NULL)
-			return -1;
-	}
-
-	for (ptr = *buf, eptr = *buf + *bufsiz;;) {
-		int c = fgetc(fp);
-		if (c == -1) {
-			if (feof(fp)) {
-				ssize_t diff = (ssize_t)(ptr - *buf);
-				if (diff != 0) {
-					*ptr = '\0';
-					return diff;
-				}
-			}
-			return -1;
-		}
-		*ptr++ = c;
-		if (c == delimiter) {
-			*ptr = '\0';
-			return ptr - *buf;
-		}
-		if (ptr + 2 >= eptr) {
-			char *nbuf;
-			size_t nbufsiz = *bufsiz * 2;
-			ssize_t d = ptr - *buf;
-			if ((nbuf = realloc(*buf, nbufsiz)) == NULL)
-				return -1;
-			*buf = nbuf;
-			*bufsiz = nbufsiz;
-			eptr = nbuf + nbufsiz;
-			ptr = nbuf + d;
-		}
-	}
-}
-
-ssize_t
-getline(char **buf, size_t *bufsiz, FILE *fp)
-{
-	return getdelim(buf, bufsiz, '\n', fp);
-}
-
-#endif

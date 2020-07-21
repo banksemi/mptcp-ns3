@@ -31,7 +31,7 @@
 #include <stdlib.h>
 
 #include "timer.h"
-#include "iperf_time.h"
+
 
 static Timer* timers = NULL;
 static Timer* free_timers = NULL;
@@ -41,19 +41,19 @@ TimerClientData JunkClientData;
 
 
 /* This is an efficiency tweak.  All the routines that need to know the
-** current time get passed a pointer to a struct iperf_time.  If it's non-NULL
-** it gets used, otherwise we do our own iperf_time_now() to fill it in.
-** This lets the caller avoid extraneous iperf_time_now()s when efficiency
+** current time get passed a pointer to a struct timeval.  If it's non-NULL
+** it gets used, otherwise we do our own gettimeofday() to fill it in.
+** This lets the caller avoid extraneous gettimeofday()s when efficiency
 ** is needed, and not bother with the extra code when efficiency doesn't
 ** matter too much.
 */
 static void
-getnow( struct iperf_time* nowP, struct iperf_time* nowP2 )
+getnow( struct timeval* nowP, struct timeval* nowP2 )
 {
     if ( nowP != NULL )
 	*nowP2 = *nowP;
     else
-	iperf_time_now(nowP2);
+	(void) gettimeofday( nowP2, NULL );
 }
 
 
@@ -68,7 +68,9 @@ list_add( Timer* t )
 	timers = t;
 	t->prev = t->next = NULL;
     } else {
-	if (iperf_time_compare(&t->time, &timers->time) < 0) {
+	if ( t->time.tv_sec < timers->time.tv_sec ||
+	     ( t->time.tv_sec == timers->time.tv_sec &&
+	       t->time.tv_usec < timers->time.tv_usec ) ) {
 	    /* The new timer goes at the head of the list. */
 	    t->prev = NULL;
 	    t->next = timers;
@@ -78,7 +80,9 @@ list_add( Timer* t )
 	    /* Walk the list to find the insertion point. */
 	    for ( t2prev = timers, t2 = timers->next; t2 != NULL;
 		  t2prev = t2, t2 = t2->next ) {
-		if (iperf_time_compare(&t->time, &t2->time) < 0) {
+		if ( t->time.tv_sec < t2->time.tv_sec ||
+		     ( t->time.tv_sec == t2->time.tv_sec &&
+		       t->time.tv_usec < t2->time.tv_usec ) ) {
 		    /* Found it. */
 		    t2prev->next = t;
 		    t->prev = t2prev;
@@ -118,12 +122,24 @@ list_resort( Timer* t )
 }
 
 
+static void
+add_usecs( struct timeval* t, int64_t usecs )
+{
+    t->tv_sec += usecs / 1000000L;
+    t->tv_usec += usecs % 1000000L;
+    if ( t->tv_usec >= 1000000L ) {
+	t->tv_sec += t->tv_usec / 1000000L;
+	t->tv_usec %= 1000000L;
+    }
+}
+
+
 Timer*
 tmr_create(
-    struct iperf_time* nowP, TimerProc* timer_proc, TimerClientData client_data,
+    struct timeval* nowP, TimerProc* timer_proc, TimerClientData client_data,
     int64_t usecs, int periodic )
 {
-    struct iperf_time now;
+    struct timeval now;
     Timer* t;
 
     getnow( nowP, &now );
@@ -142,7 +158,7 @@ tmr_create(
     t->usecs = usecs;
     t->periodic = periodic;
     t->time = now;
-    iperf_time_add_usecs(&t->time, usecs);
+    add_usecs( &t->time, usecs );
     /* Add the new timer to the active list. */
     list_add( t );
 
@@ -151,22 +167,20 @@ tmr_create(
 
 
 struct timeval*
-tmr_timeout( struct iperf_time* nowP )
+tmr_timeout( struct timeval* nowP )
 {
-    struct iperf_time now, diff;
+    struct timeval now;
     int64_t usecs;
-    int past;
     static struct timeval timeout;
 
     getnow( nowP, &now );
     /* Since the list is sorted, we only need to look at the first timer. */
     if ( timers == NULL )
 	return NULL;
-    past = iperf_time_diff(&timers->time, &now, &diff);
-    if (past)
-        usecs = 0;
-    else
-        usecs = iperf_time_in_usecs(&diff);
+    usecs = ( timers->time.tv_sec - now.tv_sec ) * 1000000LL +
+	    ( timers->time.tv_usec - now.tv_usec );
+    if ( usecs <= 0 )
+	usecs = 0;
     timeout.tv_sec = usecs / 1000000LL;
     timeout.tv_usec = usecs % 1000000LL;
     return &timeout;
@@ -174,9 +188,9 @@ tmr_timeout( struct iperf_time* nowP )
 
 
 void
-tmr_run( struct iperf_time* nowP )
+tmr_run( struct timeval* nowP )
 {
-    struct iperf_time now;
+    struct timeval now;
     Timer* t;
     Timer* next;
 
@@ -186,12 +200,14 @@ tmr_run( struct iperf_time* nowP )
 	/* Since the list is sorted, as soon as we find a timer
 	** that isn't ready yet, we are done.
 	*/
-	if (iperf_time_compare(&t->time, &now) > 0)
+	if ( t->time.tv_sec > now.tv_sec ||
+	     ( t->time.tv_sec == now.tv_sec &&
+	       t->time.tv_usec > now.tv_usec ) )
 	    break;
 	(t->timer_proc)( t->client_data, &now );
 	if ( t->periodic ) {
 	    /* Reschedule. */
-	    iperf_time_add_usecs(&t->time, t->usecs);
+	    add_usecs( &t->time, t->usecs );
 	    list_resort( t );
 	} else
 	    tmr_cancel( t );
@@ -200,13 +216,13 @@ tmr_run( struct iperf_time* nowP )
 
 
 void
-tmr_reset( struct iperf_time* nowP, Timer* t )
+tmr_reset( struct timeval* nowP, Timer* t )
 {
-    struct iperf_time now;
+    struct timeval now;
     
     getnow( nowP, &now );
     t->time = now;
-    iperf_time_add_usecs( &t->time, t->usecs );
+    add_usecs( &t->time, t->usecs );
     list_resort( t );
 }
 

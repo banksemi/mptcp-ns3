@@ -49,6 +49,6 @@ set -x
 $libtoolize --copy --force --automake
 aclocal -I config
 autoheader
-automake --add-missing --copy
+automake --foreign --add-missing --copy
 autoconf
 rm -rf config.cache

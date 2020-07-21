@@ -6,10 +6,7 @@ Obtaining iperf3
 Binary Distributions
 --------------------
 
-Note that ESnet does not distribute binary packages of iperf3.  All of
-the packages listed in this section are provided by third parties, who
-are solely responsible for their contents.  This is an incomplete list
-of binary packages:
+Binary packages are available for several supported operating systems:
 
 * FreeBSD:  `benchmarks/iperf3
   <http://freshports.org/benchmarks/iperf3>`_ in the FreeBSD Ports Collection
@@ -17,16 +14,7 @@ of binary packages:
   <https://apps.fedoraproject.org/packages/iperf3/>`_ and
   `iperf3-devel
   <https://apps.fedoraproject.org/packages/iperf3-devel>`_ in Fedora
-  19 and 20 and in Fedora EPEL 5, 6, and 7.  iperf3 is included as a
-  part of RedHat Enterprise Linux 7.4 and later (as well as CentOS 7.4
-  and later).
-* Ubuntu:  `iperf3 <https://launchpad.net/ubuntu/+source/iperf3>`_,
-  is available in Trusty (backports), and as a part of the main
-  release in Vivid and newer.
-* macOS:  via HomeBrew.
-* Windows:  `iperf3 binaries for Windows
-  <https://iperf.fr/iperf-download.php#windows>`_ are available from
-  iperf.fr (and other sources).
+  19 and 20 and in Fedora EPEL 5, 6, and 7.
 
 Source Distributions
 --------------------
@@ -34,7 +22,7 @@ Source Distributions
 Source distributions of iperf are available as compressed (gzip)
 tarballs at:
 
-https://downloads.es.net/pub/iperf/
+http://downloads.es.net/pub/iperf/
 
 **Note:**  Due to a software packaging error, the 3.0.2 release
 tarball was not compressed, even though its filename had a ``.tar.gz``
@@ -68,7 +56,7 @@ GitHub using:
 
 ``git clone https://github.com/esnet/iperf.git``
 
-Primary development for iperf3 takes place on CentOS 7 Linux, FreeBSD 11,
-and macOS 10.12. At this time, these are the only officially supported
+Primary development for iperf3 takes place on CentOS 6 Linux, FreeBSD 10,
+and MacOS X 10.8. At this time, these are the only officially supported
 platforms, however there have been some reports of success with
-NetBSD, OpenBSD, Windows, Solaris, Android, and iOS.
+OpenBSD, Android, and other Linux distributions.
