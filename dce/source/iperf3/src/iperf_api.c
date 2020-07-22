@@ -1026,6 +1026,7 @@ iperf_set_send_state(struct iperf_test *test, signed char state)
     return 0;
 }
 
+struct timeval last_send_time;
 void
 iperf_check_throttle(struct iperf_stream *sp, struct timeval *nowP)
 {
@@ -1034,9 +1035,11 @@ iperf_check_throttle(struct iperf_stream *sp, struct timeval *nowP)
 
     if (sp->test->done)
         return;
-    seconds = timeval_diff(&sp->result->start_time, nowP);
+    // seconds = timeval_diff(&sp->result->start_time, nowP);
+    seconds = timeval_diff(&last_send_time, nowP);
     bits_per_second = sp->result->bytes_sent * 8 / seconds;
-    if (bits_per_second < sp->test->settings->rate) {
+    if (seconds > 0.1) { //bits_per_second < sp->test->settings->rate
+	    last_send_time = *nowP;
         sp->green_light = 1;
         FD_SET(sp->socket, &sp->test->write_set);
     } else {
