@@ -200,16 +200,29 @@ int main (int argc, char *argv[]) {
     apps.Start (Seconds (1.5));
 
 
+    int set_rtt1 = 5;
+    int set_rtt2 = 50;
     int _switch = 0;
+    bool pacing = false;
+    float pacing_time = 1;
+    Simulator::Schedule(Seconds(1), &ChangeRTT, 0 , StringValue("100Mbps"), StringValue(std::to_string(set_rtt1) + "ms")); // start UE movement
+    Simulator::Schedule(Seconds(1), &ChangeRTT, 1, StringValue("100Mbps"), StringValue(std::to_string(set_rtt2) + "ms")); // start UE movement
+
+    _switch++;
     if (rtt_change) {
-        for(int i = 2; i<32; i += 5) {
-            Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch) % 2, StringValue("100Mbps"), StringValue("5ms")); // start UE movement
-            Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch + 1) % 2, StringValue("30Mbps"), StringValue("30ms")); // start UE movement
+        for(int i = 12; i<32; i += 1) {
+            if (pacing == false) {
+                Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch) % 2, StringValue("100Mbps"), StringValue(std::to_string(set_rtt1) + "ms")); // start UE movement
+                Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch + 1) % 2, StringValue("100Mbps"), StringValue(std::to_string(set_rtt2) + "ms")); // start UE movement
+            } else {
+                for (float j = 0; j < pacing_time; j += 0.001)
+                {
+                    Simulator::Schedule (Seconds (i + j), &ChangeRTT, (_switch) % 2, StringValue("100Mbps"), StringValue(std::to_string((int)(set_rtt1 + (set_rtt2 - set_rtt1) * (pacing_time - j) / pacing_time)) + "ms")); // start UE movement
+                    Simulator::Schedule (Seconds (i + j), &ChangeRTT, (_switch + 1) % 2, StringValue("100Mbps"), StringValue(std::to_string((int)(set_rtt1 + (set_rtt2 - set_rtt1) * j / pacing_time)) + "ms")); // start UE movement
+                }
+            }
             _switch++;
 	    }
-    } else {
-        Simulator::Schedule(Seconds(1), &ChangeRTT, 0 , StringValue("100Mbps"), StringValue("5ms")); // start UE movement
-        Simulator::Schedule(Seconds(1), &ChangeRTT, 1, StringValue("30Mbps"), StringValue("30ms")); // start UE movement
     }
 
     pointToPoint.EnablePcapAll ("../../pcap/pcap_file");
