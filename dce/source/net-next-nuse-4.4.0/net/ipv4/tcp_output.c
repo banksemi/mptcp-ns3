@@ -2785,7 +2785,7 @@ void tcp_xmit_retransmit_queue(struct sock *sk)
 	u32 last_lost;
 	int mib_idx;
 	int fwd_rexmitting = 0;
-
+	tcp_log(tcp_sk(sk),"retransmission", 1);
 	if (!tp->packets_out)
 		return;
 

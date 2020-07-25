@@ -249,7 +249,7 @@ static void mptcp_clean_rtx_queue(struct sock *meta_sk, u32 prior_snd_una)
 
 		mptcp_rtt_estimator(meta_sk, seq_rtt_us);
 		if (TCP_SKB_CB(first_skb)->transmission_count == 1)
-			printk("rtt,%ld,%d,%d",0,tcp_time_stamp,seq_rtt_us / 1000);
+			tcp_log(0, "rtt", seq_rtt_us / 1000);
 	}
 
 
