@@ -69,13 +69,25 @@ void setPos (Ptr<Node> n, int x, int y, int z) {
     Vector locVec2 (x, y, z);
     loc->SetPosition (locVec2);
 }
+float Delay(float t, float a, float b, float x) {
+    return t + ((x  - t + a) / a) * b - x;
+}
+
+template <typename T>
+std::string to_string_with_precision(const T a_value, const int n = 6)
+{
+    std::ostringstream out;
+    out.precision(n);
+    out << std::fixed << a_value;
+    return out.str();
+}
 
 int main (int argc, char *argv[]) {
     LogComponentEnable ("DceMptcpTest", LOG_LEVEL_ALL);
     uint32_t nRtrs = 2;
     CommandLine cmd;
     std::string sched = "default";
-    bool rtt_change = false;
+    bool rtt_change = true;
     std::string bandwidth = "0";
 
     cmd.AddValue ("sched", "sched value", sched);
@@ -203,22 +215,30 @@ int main (int argc, char *argv[]) {
     int set_rtt1 = 5;
     int set_rtt2 = 50;
     int _switch = 0;
-    bool pacing = false;
-    float pacing_time = 1;
-    Simulator::Schedule(Seconds(1), &ChangeRTT, 0 , StringValue("100Mbps"), StringValue(std::to_string(set_rtt1) + "ms")); // start UE movement
-    Simulator::Schedule(Seconds(1), &ChangeRTT, 1, StringValue("100Mbps"), StringValue(std::to_string(set_rtt2) + "ms")); // start UE movement
+    bool pacing = true;
 
+    Simulator::Schedule(Seconds(1), &ChangeRTT, (_switch) % 2 , StringValue("100Mbps"), StringValue(std::to_string(set_rtt1) + "ms")); // start UE movement
+    Simulator::Schedule(Seconds(1), &ChangeRTT, (_switch + 1) % 2, StringValue("100Mbps"), StringValue(std::to_string(set_rtt2) + "ms")); // start UE movement
     _switch++;
+
     if (rtt_change) {
         for(int i = 12; i<32; i += 1) {
             if (pacing == false) {
                 Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch) % 2, StringValue("100Mbps"), StringValue(std::to_string(set_rtt1) + "ms")); // start UE movement
                 Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch + 1) % 2, StringValue("100Mbps"), StringValue(std::to_string(set_rtt2) + "ms")); // start UE movement
             } else {
-                for (float j = 0; j < pacing_time; j += 0.001)
-                {
-                    Simulator::Schedule (Seconds (i + j), &ChangeRTT, (_switch) % 2, StringValue("100Mbps"), StringValue(std::to_string((int)(set_rtt1 + (set_rtt2 - set_rtt1) * (pacing_time - j) / pacing_time)) + "ms")); // start UE movement
-                    Simulator::Schedule (Seconds (i + j), &ChangeRTT, (_switch + 1) % 2, StringValue("100Mbps"), StringValue(std::to_string((int)(set_rtt1 + (set_rtt2 - set_rtt1) * j / pacing_time)) + "ms")); // start UE movement
+                int t = i * 1000;
+                for (int x = t - set_rtt1; x < t; x++) {
+                    if ((_switch) % 2 == 0) NS_LOG_UNCOND ("x " << x);
+                    if ((_switch) % 2 == 0) NS_LOG_UNCOND ("delay " << to_string_with_precision<float>(Delay(t, set_rtt1, set_rtt2, x)) + "ms");
+                    StringValue delay1_ms = StringValue(to_string_with_precision<float>(Delay(t, set_rtt1, set_rtt2, x)) + "ms");
+                    Simulator::Schedule (Seconds (x / 1000.0), &ChangeRTT, (_switch + 1) % 2, StringValue("100Mbps"), delay1_ms); // start UE movement
+                }
+                for (int x = t - set_rtt2; x < t; x++) {
+                    if ((_switch) % 2 == 0) NS_LOG_UNCOND ("x " << x);
+                    if ((_switch) % 2 == 0) NS_LOG_UNCOND ("delay " << to_string_with_precision<float>(Delay(t, set_rtt2, set_rtt1, x)) + "ms");
+                    StringValue delay2_ms = StringValue(to_string_with_precision<float>(Delay(t, set_rtt2, set_rtt1, x)) + "ms");
+                    Simulator::Schedule (Seconds (x / 1000.0), &ChangeRTT, (_switch) % 2, StringValue("100Mbps"), delay2_ms); // start UE movement
                 }
             }
             _switch++;
