@@ -228,11 +228,11 @@ int main (int argc, char *argv[]) {
                 Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch + 1) % 2, StringValue("100Mbps"), StringValue(std::to_string(set_rtt2) + "ms")); // start UE movement
             } else {
                 int t = i * 1000;
-                for (int x = t - set_rtt1; x < t; x++) {
+                for (int x = t - set_rtt1; x <= t; x++) {
                     StringValue delay1_ms = StringValue(to_string_with_precision<float>(Delay(t, set_rtt1, set_rtt2, x)) + "ms");
                     Simulator::Schedule (Seconds (x / 1000.0), &ChangeRTT, (_switch + 1) % 2, StringValue("100Mbps"), delay1_ms); // start UE movement
                 }
-                for (int x = t - set_rtt2; x < t; x++) {
+                for (int x = t - set_rtt2; x <= t; x++) {
                     StringValue delay2_ms = StringValue(to_string_with_precision<float>(Delay(t, set_rtt2, set_rtt1, x)) + "ms");
                     Simulator::Schedule (Seconds (x / 1000.0), &ChangeRTT, (_switch) % 2, StringValue("100Mbps"), delay2_ms); // start UE movement
                 }
