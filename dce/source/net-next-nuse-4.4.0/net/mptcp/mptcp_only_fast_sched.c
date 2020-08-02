@@ -237,7 +237,7 @@ static struct sock
 		else
 			*force = false;
 	}
-	if (TCP_SKB_CB(skb)->path_mask == 0 && bestsk == get_slow_socket(mpcb))
+	if (skb && TCP_SKB_CB(skb)->path_mask == 0 && bestsk == get_slow_socket(mpcb))
 		return NULL;
 
 	return bestsk;
