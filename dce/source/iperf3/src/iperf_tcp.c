@@ -81,8 +81,8 @@ iperf_tcp_send(struct iperf_stream *sp)
     if (sp->test->zerocopy)
 	r = Nsendfile(sp->buffer_fd, sp->socket, sp->buffer, sp->settings->blksize);
     else
-	r = Nwrite(sp->socket, sp->buffer, 1428, Ptcp);
-    // sp->settings->blksize
+	r = Nwrite(sp->socket, sp->buffer, sp->settings->blksize , Ptcp);
+    // sp->settings->blksize 1782579
     if (r < 0)
         return r;
 
