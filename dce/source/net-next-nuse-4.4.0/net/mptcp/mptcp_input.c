@@ -247,9 +247,12 @@ static void mptcp_clean_rtx_queue(struct sock *meta_sk, u32 prior_snd_una)
 		seq_rtt_us = skb_mstamp_us_delta(&now, &first_ackt);
 		ca_seq_rtt_us = skb_mstamp_us_delta(&now, &last_ackt);
 
-		mptcp_rtt_estimator(meta_sk, seq_rtt_us);
 		if (TCP_SKB_CB(first_skb)->transmission_count == 1)
+		{
+			mptcp_rtt_estimator(meta_sk, seq_rtt_us);
 			tcp_log(0, "rtt", seq_rtt_us / 1000);
+			tcp_log(0, "srtt", (meta_tp->srtt_us >> 3) / 1000);
+		}
 	}
 
 

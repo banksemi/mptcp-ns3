@@ -1062,6 +1062,8 @@ int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 
 	err = icsk->icsk_af_ops->queue_xmit(sk, skb, &inet->cork.fl);
 
+	tcp_log(tp, "send", skb->len + tcp_header_size);
+	tcp_log(tp, "cwnd", tp->snd_cwnd);
 	if (likely(err <= 0))
 		return err;
 

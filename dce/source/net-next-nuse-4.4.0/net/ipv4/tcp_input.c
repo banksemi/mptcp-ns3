@@ -743,8 +743,9 @@ static void tcp_rtt_estimator(struct sock *sk, long mrtt_us)
 		tp->rtt_seq = tp->snd_nxt;
 	}
 
-	tcp_log(tp, "rtt", mrtt_us / 1000);
 	tp->srtt_us = max(1U, srtt);
+	tcp_log(tp, "rtt", mrtt_us / 1000);
+	tcp_log(tp, "srtt", (tp->srtt_us >> 3) / 1000);
 }
 
 /* Set the sk_pacing_rate to allow proper sizing of TSO packets.
@@ -2965,8 +2966,6 @@ static void tcp_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 
 	icsk->icsk_ca_ops->cong_avoid(sk, ack, acked);
 	tcp_sk(sk)->snd_cwnd_stamp = tcp_time_stamp;
-
-	tcp_log(tcp_sk(sk), "cwnd", tcp_sk(sk)->snd_cwnd);
 }
 
 /* Restart timer after forward progress on connection.
@@ -3146,6 +3145,8 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 
 		if (!fully_acked)
 			break;
+
+		tcp_log(tp, "receive", skb_headlen(skb));
 
 		tcp_unlink_write_queue(skb, sk);
 		sk_wmem_free_skb(sk, skb);
