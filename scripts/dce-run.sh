@@ -9,7 +9,7 @@ rm ./pcap/*.pcap
 cd ./source/ns-3-dce
 
 if [ $# -ne 1 ]; then
-    ./waf --run test-standard
+    ./waf --run test-standard --command-template="gdb %s"
 else
     ./waf --run "$@"
 fi
