@@ -52,8 +52,10 @@ void ChangeRTT(int device, StringValue BandRate, StringValue RTT) {
         Config::Set("/NodeList/2/DeviceList/0/$ns3::PointToPointNetDevice/DataRate", BandRate);
         Config::Set("/ChannelList/1/$ns3::PointToPointChannel/Delay", RTT);
 	} else {
-       // Config::Set("/NodeList/0/DeviceList/1/$ns3::PointToPointNetDevice/DataRate", BandRate);
         //Config::Set("/ChannelList/2/$ns3::PointToPointChannel/Delay", RTT);
+        Config::Set("/NodeList/0/DeviceList/1/$ns3::PointToPointNetDevice/DataRate", BandRate);
+        Config::Set("/NodeList/3/DeviceList/0/$ns3::PointToPointNetDevice/DataRate", BandRate);
+        Config::Set("/ChannelList/2/$ns3::PointToPointChannel/Delay", RTT);
 	}
 }
 void setPos (Ptr<Node> n, int x, int y, int z) {
@@ -77,9 +79,9 @@ std::string to_string_with_precision(const T a_value, const int n = 6)
 
 int main (int argc, char *argv[]) {
     LogComponentEnable ("DceMptcpTest", LOG_LEVEL_ALL);
-    uint32_t nRtrs = 1;
+    uint32_t nRtrs = 2;
     CommandLine cmd;
-    std::string sched = "only_fast";
+    std::string sched = "default";
     bool rtt_change = true;
     std::string bandwidth = "0";
 
@@ -131,7 +133,7 @@ setPos (nodes.Get (1), 50, 0, 0);
     for (uint32_t i = 0; i < nRtrs; i++) {
         // Left 링크의 pointToPoint 속성은 DCE 스케줄에 의해 나중에 다시 세팅됨.
         // Left link
-        pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("1Mbps"));
+        pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("0.1Mbps"));
         pointToPoint.SetChannelAttribute ("Delay", StringValue ("50ms")); // 별도 옵션
         devices1 = pointToPoint.Install (nodes.Get (0), routers.Get (i));
         // Assign ip addresses
@@ -231,7 +233,7 @@ setPos (nodes.Get (1), 50, 0, 0);
     LinuxStackHelper::RunIp (nodes.Get (0), Seconds (0.1), "rule show");
 
 
-    stack.SysctlSet(nodes, ".net.mptcp.mptcp_enabled", "0");
+    stack.SysctlSet(nodes, ".net.mptcp.mptcp_enabled", "1");
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_scheduler", sched);
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_checksum", "1");
     
@@ -248,7 +250,7 @@ setPos (nodes.Get (1), 50, 0, 0);
     dce.AddArgument ("-i");
     dce.AddArgument ("1.0");
     dce.AddArgument ("--time");
-    dce.AddArgument ("10");
+    dce.AddArgument ("30");
     dce.AddArgument ("--bandwidth");
     dce.AddArgument (bandwidth);
     //dce.AddArgument ("--json");
@@ -271,8 +273,8 @@ setPos (nodes.Get (1), 50, 0, 0);
     StringValue set_bandwidth1 = StringValue("100Mbps");
     int set_rtt1 = 5;
 
-    StringValue set_bandwidth2 = StringValue("100Mbps");
-    int set_rtt2 = 5;
+    StringValue set_bandwidth2 = StringValue("10Mbps");
+    int set_rtt2 = 20;
     int _switch = 0;
     bool pacing = true;
 
