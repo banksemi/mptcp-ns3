@@ -224,7 +224,7 @@ setPos (nodes.Get (1), 50, 0, 0);
         cmd_oss << "route add 10.2."<< i <<".0/24 via " << if2.GetAddress (1, 0) << " dev sim1";
         LinuxStackHelper::RunIp (routers.Get (i), Seconds (0.2), cmd_oss.str ().c_str ());
 
-        setPos (routers.Get (i), 50, 35, 0);
+        setPos (routers.Get (i), 50, 15, 0);
     }
 
   // default route
@@ -270,10 +270,10 @@ setPos (nodes.Get (1), 50, 0, 0);
     apps = dce.Install (nodes.Get (1));
     apps.Start (Seconds (1.5));
 
-    StringValue set_bandwidth1 = StringValue("100Mbps");
+    StringValue set_bandwidth1 = StringValue("500Mbps");
     int set_rtt1 = 5;
 
-    StringValue set_bandwidth2 = StringValue("10Mbps");
+    StringValue set_bandwidth2 = StringValue("50Mbps");
     int set_rtt2 = 20;
     int _switch = 0;
     bool pacing = true;

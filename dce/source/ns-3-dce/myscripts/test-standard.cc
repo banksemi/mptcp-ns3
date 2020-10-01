@@ -86,9 +86,9 @@ int main (int argc, char *argv[]) {
     LogComponentEnable ("DceMptcpTest", LOG_LEVEL_ALL);
     uint32_t nRtrs = 2;
     CommandLine cmd;
-    std::string sched = "default";
+    std::string sched = "only_fast";
     bool rtt_change = true;
-    std::string bandwidth = "0";
+    std::string bandwidth = "1Mbit";
 
     cmd.AddValue ("sched", "sched value", sched);
     cmd.AddValue ("rtt_change", "rtt_change value", rtt_change);
@@ -176,7 +176,6 @@ int main (int argc, char *argv[]) {
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_enabled", "1");
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_scheduler", sched);
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_checksum", "1");
-    // stack.SysctlSet(nodes, ".net.ipv4.tcp_rmem", "500000 500000 500000");
     
     DceApplicationHelper dce;
     ApplicationContainer apps;
@@ -211,10 +210,10 @@ int main (int argc, char *argv[]) {
     apps = dce.Install (nodes.Get (1));
     apps.Start (Seconds (1.5));
 
-    StringValue set_bandwidth1 = "100Mbps";
+    StringValue set_bandwidth1 = StringValue("100Mbps");
     int set_rtt1 = 5;
 
-    StringValue set_bandwidth2 = "30Mbps";
+    StringValue set_bandwidth2 = StringValue("30Mbps");
     int set_rtt2 = 50;
     int _switch = 0;
     bool pacing = true;

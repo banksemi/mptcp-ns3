@@ -1062,9 +1062,11 @@ iperf_check_throttle(struct iperf_stream *sp, struct timeval *nowP)
 int
 iperf_send(struct iperf_test *test, fd_set *write_setP)
 {
+    double seconds;
     register int multisend, r, streams_active;
     register struct iperf_stream *sp;
     struct timeval now;
+    struct timeval now2;
 
     /* Can we do multisend mode? */
     if (test->settings->burst != 0)
@@ -1079,23 +1081,26 @@ iperf_send(struct iperf_test *test, fd_set *write_setP)
 	    gettimeofday(&now, NULL);
 	streams_active = 0;
 	SLIST_FOREACH(sp, &test->streams, streams) {
+        gettimeofday(&now2, NULL);
+        // seconds = timeval_diff(&last_send_time, &now2);
 	    if (sp->green_light &&
 	        (write_setP == NULL || FD_ISSET(sp->socket, write_setP))) {
-		if ((r = sp->snd(sp)) < 0) {
-		    if (r == NET_SOFTERROR)
-			break;
-		    i_errno = IESTREAMWRITE;
-		    return r;
-		}
-		streams_active = 1;
-		test->bytes_sent += r;
-		++test->blocks_sent;
-		if (test->settings->rate != 0 && test->settings->burst == 0)
-		    iperf_check_throttle(sp, &now);
-		if (multisend > 1 && test->settings->bytes != 0 && test->bytes_sent >= test->settings->bytes)
-		    break;
-		if (multisend > 1 && test->settings->blocks != 0 && test->blocks_sent >= test->settings->blocks)
-		    break;
+            if ((r = sp->snd(sp)) < 0) {
+                if (r == NET_SOFTERROR)
+                break;
+                i_errno = IESTREAMWRITE;
+                return r;
+            }
+            // last_send_time = now2;
+            streams_active = 1;
+            test->bytes_sent += r;
+            ++test->blocks_sent;
+            if (test->settings->rate != 0 && test->settings->burst == 0)
+                iperf_check_throttle(sp, &now);
+            if (multisend > 1 && test->settings->bytes != 0 && test->bytes_sent >= test->settings->bytes)
+                break;
+            if (multisend > 1 && test->settings->blocks != 0 && test->blocks_sent >= test->settings->blocks)
+                break;
 	    }
 	}
 	if (!streams_active)
