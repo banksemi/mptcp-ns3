@@ -93,7 +93,7 @@ static ns3::GlobalValue g_harqEnabled("harqEnabled",
 int main(int argc, char *argv[])
 {
     LogComponentEnable("DceMptcpMmWave", LOG_LEVEL_ALL);
-
+    //LogComponentEnable ("MmWave3gppChannel", LOG_LEVEL_DEBUG);
     // Command line arguments
     CommandLine cmd;
     //cmd.AddValue("numberOfNodes", "Number of eNodeBs + UE pairs", numberOfNodes);
@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
 
     std::string bufSize = "1073700000";
     //  std::string bufSize = "1073700000";
-    double stopTime = 53.0;
+    double stopTime = 23.0;
     std::string p2pdelay = "0ms";
 
     bool disLte = true;
@@ -170,10 +170,10 @@ int main(int argc, char *argv[])
     //  Config::SetDefault ("ns3::MmWaveFlexTtiMacScheduler::FixedMcsUl", BooleanValue (true));
     //  Config::SetDefault ("ns3::MmWaveFlexTtiMacScheduler::McsDefaultUl", UintegerValue (mcs));
 
-    /*
+    
   // settings for the 3GPP the channel
   Config::SetDefault ("ns3::MmWave3gppPropagationLossModel::ChannelCondition", StringValue ("a"));
-  Config::SetDefault ("ns3::MmWave3gppPropagationLossModel::Scenario", StringValue ("UMi-StreetCanyon"));
+  Config::SetDefault ("ns3::MmWave3gppPropagationLossModel::Scenario", StringValue ("InH-OfficeMixed"));
   Config::SetDefault ("ns3::MmWave3gppPropagationLossModel::OptionalNlos", BooleanValue (true));
   Config::SetDefault ("ns3::MmWave3gppPropagationLossModel::Shadowing", BooleanValue (true)); // enable or disable the shadowing effect
   Config::SetDefault ("ns3::MmWave3gppBuildingsPropagationLossModel::UpdateCondition", BooleanValue (true)); // enable or disable the LOS/NLOS update when the UE moves
@@ -182,10 +182,10 @@ int main(int argc, char *argv[])
   Config::SetDefault ("ns3::MmWave3gppChannel::UpdatePeriod", TimeValue (MilliSeconds (100))); // interval after which the channel for a moving user is updated,
   // with spatial consistency procedure. If 0, spatial consistency is not used
 //  Config::SetDefault ("ns3::MmWave3gppChannel::DirectBeam", BooleanValue (true)); // Set true to perform the beam in the exact direction of receiver node.
-  Config::SetDefault ("ns3::MmWave3gppChannel::Blockage", BooleanValue (false)); // use blockage or not
+  Config::SetDefault ("ns3::MmWave3gppChannel::Blockage", BooleanValue (true)); // use blockage or not
   Config::SetDefault ("ns3::MmWave3gppChannel::PortraitMode", BooleanValue (true)); // use blockage model with UT in portrait mode
   Config::SetDefault ("ns3::MmWave3gppChannel::NumNonselfBlocking", IntegerValue (1)); // number of non-self blocking obstacles
-*/
+
     Config::SetDefault("ns3::MmWaveHelper::RlcAmEnabled", BooleanValue(rlcAmEnabled));
     Config::SetDefault("ns3::MmWaveHelper::HarqEnabled", BooleanValue(harqEnabled));
     Config::SetDefault("ns3::MmWaveFlexTtiMacScheduler::HarqEnabled", BooleanValue(harqEnabled));
@@ -236,7 +236,7 @@ int main(int argc, char *argv[])
     // mmWaveHelper->SetAttribute ("BasicImsi", UintegerValue (0));
     mmWaveHelper->SetHarqEnabled(harqEnabled);
     mmWaveHelper->SetAttribute("PathlossModel", StringValue("ns3::BuildingsObstaclePropagationLossModel"));
-    // mmWaveHelper->SetAttribute ("ChannelModel", StringValue ("ns3::MmWave3gppChannel"));
+    //mmWaveHelper->SetAttribute ("ChannelModel", StringValue ("ns3::MmWave3gppChannel"));
     mmWaveHelper->Initialize();
     mmWaveHelper->SetPhyMacConfigurationParameters("CenterFreq", "28e9");
     Ptr<MmWavePointToPointEpcHelper> mmWaveEpcHelper = CreateObject<MmWavePointToPointEpcHelper>();
@@ -279,32 +279,56 @@ int main(int argc, char *argv[])
     // set UE distance
     for (uint32_t i = 0; i < numberOfNodes; i++)
     {
-        setPos(nodes.Get(i), 100, -20, 1);
-        setPos(routers.Get(i), 100, -20, 1);
+        setPos(nodes.Get(i), 25, 3, 1);
         setPos(nodes.Get(numberOfNodes + i), 200, 200, 0);
         ueNodes.Add(nodes.Get(i));
         serverNodes.Add(nodes.Get(i + numberOfNodes));
     }
+        setPos(routers.Get(0), 0, 3, 1);
 
     double x_min = 80.0;
     double x_max = 90.0;
     double y_min = -10.0;
     double y_max = 10.0;
-    double z_min = 0.0;
-    double z_max = 10.0;
+    double z_min = -150.0;
+    double z_max = 150.0;
+    /*
     Ptr<Building> b = CreateObject<Building>();
     b->SetBoundaries(Box(x_min, x_max, y_min, y_max, z_min, z_max));
     b->SetBuildingType(Building::Residential);
     b->SetExtWallsType(Building::ConcreteWithWindows);
-    b->SetNFloors(3);
+    b->SetNFloors(3); //3
     b->SetNRoomsX(3);
     b->SetNRoomsY(2);
-
+*/
+    Ptr<Building> c = CreateObject<Building>();
+    c->SetBoundaries(Box(0, 20,-100,0,0,30));
+    c->SetBuildingType(Building::Residential);
+    c->SetExtWallsType(Building::ConcreteWithWindows);
+    c->SetNFloors(3); //3
+    c->SetNRoomsX(3);
+    c->SetNRoomsY(2);
+/*
+    c = CreateObject<Building>();
+    c->SetBoundaries(Box(0, 100,20,40,0,100));
+    c->SetBuildingType(Building::Residential);
+    c->SetExtWallsType(Building::ConcreteWithWindows);
+    c->SetNFloors(3); //3
+    c->SetNRoomsX(3);
+    c->SetNRoomsY(2);
+        c = CreateObject<Building>();
+    c->SetBoundaries(Box(40, 100,-30,20,0,100));
+    c->SetBuildingType(Building::Residential);
+    c->SetExtWallsType(Building::ConcreteWithWindows);
+    c->SetNFloors(3); //3
+    c->SetNRoomsX(3);
+    c->SetNRoomsY(2);
+*/
     Ptr<Node> pgw = NULL;
 
     BuildingsHelper::Install(nodes);
 
-    Simulator::Schedule(Seconds(2), &ChangeSpeed, nodes.Get(0), Vector(0, 2, 0)); // start UE movement
+    Simulator::Schedule(Seconds(2), &ChangeSpeed, nodes.Get(0), Vector(0, -2, 0)); // start UE movement
     // Simulator::Schedule (Seconds (12), &ChangeSpeed, nodes.Get (0), Vector (30, 0, 0)); // start UE movement
     NS_LOG_UNCOND("----------- mmWave -------------");
     if (!disMmwave)
@@ -315,7 +339,7 @@ int main(int argc, char *argv[])
 
         mmWaveHelper->SetEpcHelper(mmWaveEpcHelper);
         pgw = mmWaveEpcHelper->GetPgwNode();
-        setPos(enbNodes.Get(0), 0, 0, 3);
+        setPos(enbNodes.Get(0), 0, 3, 1);
         BuildingsHelper::Install(enbNodes);
 
         NetDeviceContainer enbMmWaveDevs = mmWaveHelper->InstallEnbDevice(enbNodes);
@@ -560,9 +584,9 @@ int main(int argc, char *argv[])
         dce.AddArgument("-i");
         dce.AddArgument("1.0");
         dce.AddArgument("--time");
-        dce.AddArgument("10");
-        dce.AddArgument ("--bandwidth");
-        dce.AddArgument("1Mbit");
+        dce.AddArgument("4");
+        //dce.AddArgument ("--bandwidth");
+       // dce.AddArgument("1Mbit");
         dce.AddArgument("-R");
         // dce.AddArgument ("-fb");
         // dce.AddArgument ("-f");
