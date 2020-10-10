@@ -211,10 +211,10 @@ int main (int argc, char *argv[]) {
     apps = dce.Install (nodes.Get (1));
     apps.Start (Seconds (1.5));
 
-    StringValue set_bandwidth1 = "100Mbps";
+    StringValue set_bandwidth1 = StringValue("100Mbps");
     int set_rtt1 = 5;
 
-    StringValue set_bandwidth2 = "30Mbps";
+    StringValue set_bandwidth2 = StringValue("30Mbps");
     int set_rtt2 = 50;
     int _switch = 0;
     bool pacing = true;
