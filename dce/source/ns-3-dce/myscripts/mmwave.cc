@@ -212,6 +212,9 @@ int main(int argc, char *argv[])
     Config::SetDefault("ns3::PointToPointEpcHelper::S1uLinkDelay", TimeValue(Seconds(0.001)));
 
     GlobalValue::Bind("ChecksumEnabled", BooleanValue(true));
+
+    Config::SetDefault ("ns3::BuildingsObstaclePropagationLossModel::NlosAdditionalLoss", DoubleValue (18));
+
     NodeContainer nodes, routers;
     uint32_t numberOfNodes = 1;
     nodes.Create(numberOfNodes * 2);

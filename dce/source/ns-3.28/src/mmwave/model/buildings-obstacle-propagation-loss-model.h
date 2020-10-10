@@ -66,6 +66,7 @@ private:
 	double mmWaveNlosLoss (Ptr<MobilityModel> a, Ptr<MobilityModel> b) const;
 	double m_frequency;
 	double m_lambda;
+	double m_nlosAdditionalLoss;
 	Ptr<MmWaveBeamforming> m_beamforming;
 	Ptr<MmWaveLosTracker> m_losTracker;
 	Ptr<MmWavePhyMacCommon> m_phyMacConfig;

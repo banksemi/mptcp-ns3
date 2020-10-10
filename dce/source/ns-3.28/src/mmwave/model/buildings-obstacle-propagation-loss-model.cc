@@ -756,6 +756,11 @@ BuildingsObstaclePropagationLossModel::GetTypeId (void)
 {
 	static TypeId tid = TypeId ("ns3::BuildingsObstaclePropagationLossModel")
 		.SetParent<BuildingsPropagationLossModel> ()
+	        .AddAttribute ("NlosAdditionalLoss",
+				"Additional losses in NLOS state",
+				DoubleValue (0),
+				MakeDoubleAccessor (&BuildingsObstaclePropagationLossModel::m_nlosAdditionalLoss),
+				MakeDoubleChecker<double> ())
 		.AddConstructor<BuildingsObstaclePropagationLossModel> ()
 	;
 	return tid;
@@ -837,7 +842,6 @@ BuildingsObstaclePropagationLossModel::GetLoss (Ptr<MobilityModel> a, Ptr<Mobili
 
 		// TODO: react when PL is LOS or NLOS, according to previoius instants
 
-		double lambda_loss = 17;
 		if (nlosSamples == -1 || losSamples == -1)
 		{
 			if(los)
@@ -856,7 +860,7 @@ BuildingsObstaclePropagationLossModel::GetLoss (Ptr<MobilityModel> a, Ptr<Mobili
 				loss_inner = mmWaveLosLoss(a,b);
 				double sample_trace = g_blockage_down[nlosSamples-1];
 				loss = loss_inner - sample_trace; // 'minus' because I need to "decrement" the pathloss
-				loss += lambda_loss;
+				loss += m_nlosAdditionalLoss;
 				NS_LOG_DEBUG("PL NLOS drop phase is " << loss << " and Aditya's sample is " << sample_trace);
 			}
 			else if (!los && nlosSamples == g_nlosSamplesTrace) // I am in NLOS but in the 'flat phase'
@@ -864,7 +868,7 @@ BuildingsObstaclePropagationLossModel::GetLoss (Ptr<MobilityModel> a, Ptr<Mobili
 				loss_inner = mmWaveLosLoss(a,b); // -----------------_> CHECK
 				double sample_trace = g_blockage_down[nlosSamples-1]; // take the last sample, as a baseline
 				loss = loss_inner - sample_trace;
-				loss += lambda_loss;
+				loss += m_nlosAdditionalLoss;
 				NS_LOG_DEBUG("PL NLOS is " << loss);
 				
 			}
@@ -883,7 +887,7 @@ BuildingsObstaclePropagationLossModel::GetLoss (Ptr<MobilityModel> a, Ptr<Mobili
 				}
 				
 				loss = loss_inner - sample_trace; // 'minus' because I need to "decrement" the pathloss
-				loss += lambda_loss;
+				loss += m_nlosAdditionalLoss;
 				NS_LOG_DEBUG("PL LOS raise phase is " << loss << " and Aditya's sample is " << sample_trace);	
 			}
 			else if (los && losSamples == g_nlosSamplesTrace) // I am in LOS, and the 'raise phase' is finally over
