@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
 
     std::string bufSize = "1073700000";
     //  std::string bufSize = "1073700000";
-    double stopTime = 23.0;
+    double stopTime = 33.0;
     std::string p2pdelay = "0ms";
 
     bool disLte = true;
@@ -213,7 +213,7 @@ int main(int argc, char *argv[])
 
     GlobalValue::Bind("ChecksumEnabled", BooleanValue(true));
 
-    Config::SetDefault ("ns3::BuildingsObstaclePropagationLossModel::NlosAdditionalLoss", DoubleValue (18));
+    Config::SetDefault ("ns3::BuildingsObstaclePropagationLossModel::NlosAdditionalLoss", DoubleValue (25));
 
     NodeContainer nodes, routers;
     uint32_t numberOfNodes = 1;
@@ -282,12 +282,12 @@ int main(int argc, char *argv[])
     // set UE distance
     for (uint32_t i = 0; i < numberOfNodes; i++)
     {
-        setPos(nodes.Get(i), 25, 3, 1);
+        setPos(nodes.Get(i), 10, -10, 1);
         setPos(nodes.Get(numberOfNodes + i), 200, 200, 0);
         ueNodes.Add(nodes.Get(i));
         serverNodes.Add(nodes.Get(i + numberOfNodes));
     }
-        setPos(routers.Get(0), 0, 3, 1);
+        setPos(routers.Get(0), 0, 0, 1);
 
     double x_min = 80.0;
     double x_max = 90.0;
@@ -304,13 +304,12 @@ int main(int argc, char *argv[])
     b->SetNRoomsX(3);
     b->SetNRoomsY(2);
 */
-    Ptr<Building> c = CreateObject<Building>();
-    c->SetBoundaries(Box(0, 20,-100,0,0,30));
-    c->SetBuildingType(Building::Residential);
-    c->SetExtWallsType(Building::ConcreteWithWindows);
-    c->SetNFloors(3); //3
-    c->SetNRoomsX(3);
-    c->SetNRoomsY(2);
+    Ptr<Building> c ;
+    c = CreateObject<Building>();
+    c->SetBoundaries(Box(9, 9.5,-6,-2,0,30));
+
+    c = CreateObject<Building>();
+    c->SetBoundaries(Box(9, 9.5,2,6,0,30));
 /*
     c = CreateObject<Building>();
     c->SetBoundaries(Box(0, 100,20,40,0,100));
@@ -331,7 +330,7 @@ int main(int argc, char *argv[])
 
     BuildingsHelper::Install(nodes);
 
-    Simulator::Schedule(Seconds(2), &ChangeSpeed, nodes.Get(0), Vector(0, -2, 0)); // start UE movement
+    Simulator::Schedule(Seconds(2), &ChangeSpeed, nodes.Get(0), Vector(0, +2, 0)); // start UE movement
     // Simulator::Schedule (Seconds (12), &ChangeSpeed, nodes.Get (0), Vector (30, 0, 0)); // start UE movement
     NS_LOG_UNCOND("----------- mmWave -------------");
     if (!disMmwave)
@@ -342,7 +341,7 @@ int main(int argc, char *argv[])
 
         mmWaveHelper->SetEpcHelper(mmWaveEpcHelper);
         pgw = mmWaveEpcHelper->GetPgwNode();
-        setPos(enbNodes.Get(0), 0, 3, 1);
+        setPos(enbNodes.Get(0), 0, 0, 1);
         BuildingsHelper::Install(enbNodes);
 
         NetDeviceContainer enbMmWaveDevs = mmWaveHelper->InstallEnbDevice(enbNodes);
@@ -458,6 +457,7 @@ int main(int argc, char *argv[])
         YansWifiChannelHelper phyChannel = YansWifiChannelHelper::Default();
         WifiMacHelper mac;
         phy.Set("Antennas", UintegerValue(2));
+        phy.Set("ChannelWidth", UintegerValue(40));
         phy.Set("MaxSupportedTxSpatialStreams", UintegerValue(2));
         phy.Set("MaxSupportedRxSpatialStreams", UintegerValue(2));
         phy.SetChannel(phyChannel.Create());
@@ -485,6 +485,7 @@ int main(int argc, char *argv[])
         }
         for (uint32_t i = 0; i < numberOfNodes; i++)
         {
+            pointToPoint.SetChannelAttribute("Delay", StringValue("10ms"));
             devices4 = pointToPoint.Install(serverNodes.Get(i), routers.Get(0));
             if4 = address2.Assign(devices4);
             address2.NewNetwork();
@@ -587,9 +588,9 @@ int main(int argc, char *argv[])
         dce.AddArgument("-i");
         dce.AddArgument("1.0");
         dce.AddArgument("--time");
-        dce.AddArgument("4");
-        //dce.AddArgument ("--bandwidth");
-       // dce.AddArgument("1Mbit");
+        dce.AddArgument("10");
+        dce.AddArgument ("--bandwidth");
+        dce.AddArgument("1Mbit");
         dce.AddArgument("-R");
         // dce.AddArgument ("-fb");
         // dce.AddArgument ("-f");

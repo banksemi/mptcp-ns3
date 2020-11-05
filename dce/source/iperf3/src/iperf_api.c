@@ -1040,7 +1040,7 @@ iperf_check_throttle(struct iperf_stream *sp, struct timeval *nowP)
 
     seconds = timeval_diff(&sp->result->start_time, nowP);
     // seconds = timeval_diff(&last_send_time, nowP);
-    target_bits = 1782579 * (int)(seconds / 4);
+    target_bits = 1782579 * (int)(seconds / 1);
 
     if (last_target_bit != target_bits) {
         last_target_bit = target_bits;
