@@ -18,28 +18,12 @@ struct defsched_priv {
 	struct tcp_sock *activetp;
 	struct tcp_sock *backuptp;
 
-	u32 rtt_penalty;
-	u32 rtt_penalty_expires;
-	bool rtt_penalty_on;
+	u32 dont_use_until_ack;
 };
 
 static struct defsched_priv *defsched_get_priv(const struct tcp_sock *tp)
 {
 	return (struct defsched_priv *)&tp->mptcp->mptcp_sched[0];
-}
-
-static u32 get_rtt(struct tcp_sock* tp) {
-	struct defsched_priv *dsp = defsched_get_priv(tp);
-	if (dsp->rtt_penalty_on) {
-		if (dsp->rtt_penalty_expires > tcp_time_stamp) {
-			return tp->srtt_us + dsp->rtt_penalty;
-		} else {
-			dsp->rtt_penalty_on = false;
-			return tp->srtt_us;
-		}
-	} else {
-		return tp->srtt_us;
-	}
 }
 
 static bool mptcp_is_def_unavailable(struct sock *sk)
@@ -159,13 +143,13 @@ static struct sock *get_slow_socket(struct mptcp_cb *mpcb) {
 		bool unused = false;
 
 		/* Find Fast Flow in selection flows */
-		if (!mptcp_is_def_unavailable(sk) && get_rtt(tp)) {
-			if (fast_srtt > get_rtt(tp)) {
-				fast_srtt = get_rtt(tp);
+		if (!mptcp_is_def_unavailable(sk) && tp->srtt_us) {
+			if (fast_srtt > tp->srtt_us) {
+				fast_srtt = tp->srtt_us;
 				fastsk = sk;
 			}
-			if (slow_srtt < get_rtt(tp)) {
-				slow_srtt = get_rtt(tp);
+			if (slow_srtt < tp->srtt_us) {
+				slow_srtt = tp->srtt_us;
 				slowsk = sk;
 			}
 		}
@@ -199,8 +183,11 @@ static struct sock
 	bool found_unused_una = false;
 	struct sock *sk;
 
+	bool pass_only_fast = false;
+
 	mptcp_for_each_sk(mpcb, sk) {
 		struct tcp_sock *tp = tcp_sk(sk);
+		struct defsched_priv *dsp = defsched_get_priv(tp);
 		bool unused = false;
 
 		/* First, we choose only the wanted sks */
@@ -236,8 +223,14 @@ static struct sock
 			found_unused = true;
 		}
 
-		if (get_rtt(tp) < min_srtt) {
-			min_srtt = get_rtt(tp);
+		if (tp->srtt_us < min_srtt) {
+			if (tp->snd_una == dsp->dont_use_until_ack) {
+				tcp_log(0, "pass", 1);
+				pass_only_fast = true;
+			} else {
+				pass_only_fast = false;
+			}
+			min_srtt = tp->srtt_us;
 			bestsk = sk;
 		}
 	}
@@ -259,8 +252,11 @@ static struct sock
 		else
 			*force = false;
 	}
-	if (skb && TCP_SKB_CB(skb)->path_mask == 0 && bestsk == get_slow_socket(mpcb))
-		return NULL;
+	if (pass_only_fast == false) {
+		if (skb && TCP_SKB_CB(skb)->path_mask == 0 && bestsk == get_slow_socket(mpcb)) {
+			return NULL;
+		}
+	}
 
 	return bestsk;
 }
@@ -470,8 +466,6 @@ void check_ack(struct defsched_priv *dsp) {
 	struct sk_buff *skb = tcp_write_queue_head(meta_sk);
   	struct mptcp_cb *mpcb = meta_tp->mpcb;
 
-	dsp->rtt_penalty = get_rtt(dsp->backuptp) * 1.5;
-	dsp->rtt_penalty_expires = tcp_time_stamp + usecs_to_jiffies(get_rtt(dsp->backuptp) >> 3) * 5;
 	if (!skb)
 		return;
 	struct skb_mstamp now;
@@ -481,12 +475,14 @@ void check_ack(struct defsched_priv *dsp) {
 	while (skb != NULL && skb != tcp_send_head(meta_sk)) {
 		if (mptcp_dont_reinject_skb(dsp->activetp, skb) && TCP_SKB_CB(skb)->dss[1] != 2)
 		{
+			tcp_log(0, "check", 1);
 			if (reinject_start_check == false) {
 
     			u32 seq_rtt_us = skb_mstamp_us_delta(&now, &(skb->skb_mstamp));
-				if (seq_rtt_us < (dsp->backuptp->srtt_us >> 3) * 2)
+				u32 rtt_penalty =(dsp->backuptp->srtt_us >> 3) * 2;
+				if (seq_rtt_us < rtt_penalty)
 				{
-					unsigned long expires = tcp_time_stamp + usecs_to_jiffies(get_rtt(dsp->backuptp) >> 3) * 0.2;
+					unsigned long expires = tcp_time_stamp + usecs_to_jiffies(dsp->backuptp->srtt_us >> 3) * 0.2;
 					struct timer_list *timer = &(dsp->fast_retransmission_timer);
 					if (!timer_pending(timer)) {
 						init_timer(timer);
@@ -496,16 +492,14 @@ void check_ack(struct defsched_priv *dsp) {
 						add_timer(timer);
 					}
 					return;
-
 				}
 				else 
+				{
 					reinject_start_check = true;
+					dsp->dont_use_until_ack = dsp->activetp->snd_una;
+				}
 			}
 			/* Copy SKB */
-			if (dsp->rtt_penalty_on == false) {
-				dsp->rtt_penalty_on = true;
-				// dsp->activetp->srtt_us = dsp->activetp->srtt_us + dsp->rtt_penalty * 5;
-			}
 			struct sk_buff *copy_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
 			if (likely(copy_skb)) { /* SKB isn't NULL */
 				copy_skb->sk = meta_sk;
@@ -576,7 +570,6 @@ static struct sk_buff *mptcp_next_segment(struct sock *meta_sk,
 		/* If there are no packets in flight on the slow path, and the packet to be sent now is not an injected packet */
 		if (!tcp_packets_in_flight(slowtp) && TCP_SKB_CB(skb)->path_mask == 0) {
 			struct mptcp_cb *mpcb = meta_tp->mpcb;
-			struct sock *slowsk = get_slow_socket(mpcb);
 			/* Copy SKB */
 			struct sk_buff *copy_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
 			if (likely(copy_skb)) { /* SKB isn't NULL */
@@ -597,9 +590,9 @@ static struct sk_buff *mptcp_next_segment(struct sock *meta_sk,
 			struct defsched_priv *dsp = defsched_get_priv(subtp);
 			dsp->activetp = subtp;
 			dsp->backuptp = slowtp;
-			unsigned long expires = tcp_time_stamp + usecs_to_jiffies(get_rtt(slowtp) >> 3) * 1.5;
+			unsigned long expires = tcp_time_stamp + usecs_to_jiffies(slowtp->srtt_us >> 3);
 			struct timer_list *timer = &(dsp->fast_retransmission_timer);
-
+			// TCP_SKB_CB(skb)->custom_variable[0] = slowtp->srtt_us;
 			if (timer_pending(timer)) {
 				// mod_timer(timer, expires);
 			} else {
@@ -650,6 +643,7 @@ static void defsched_init(struct sock *sk)
 	struct defsched_priv *dsp = defsched_get_priv(tcp_sk(sk));
 
 	dsp->last_rbuf_opti = tcp_time_stamp;
+	dsp->dont_use_until_ack = 0;
 }
 
 struct mptcp_sched_ops mptcp_only_fast = {
