@@ -92,6 +92,10 @@ static ns3::GlobalValue g_harqEnabled("harqEnabled",
 
 int main(int argc, char *argv[])
 {
+
+    std::string sched = "only_fast";
+    std::string bandwidth = "0";
+    
     LogComponentEnable("DceMptcpMmWave", LOG_LEVEL_ALL);
     //LogComponentEnable ("MmWave3gppChannel", LOG_LEVEL_DEBUG);
     // Command line arguments
@@ -99,7 +103,13 @@ int main(int argc, char *argv[])
     //cmd.AddValue("numberOfNodes", "Number of eNodeBs + UE pairs", numberOfNodes);
     //cmd.AddValue("simTime", "Total duration of the simulation [s])", simTime);
     //cmd.AddValue("interPacketInterval", "Inter packet interval [ms])", interPacketInterval);
+
+    cmd.AddValue ("sched", "sched value", sched);
+    cmd.AddValue ("bandwidth", "bandwidth value", bandwidth);
     cmd.Parse(argc, argv);
+
+    NS_LOG_UNCOND ("sched " << sched);
+    NS_LOG_UNCOND ("bandwidth " << bandwidth);
 
     std::string bufSize = "1073700000";
     //  std::string bufSize = "1073700000";
@@ -554,7 +564,7 @@ int main(int argc, char *argv[])
     stack.SysctlSet(nodes, ".net.ipv4.tcp_congestion_control",
                     ccAlg);
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_scheduler",
-                    "default");
+                    "only_fast");
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_checksum",
                     "1");
     stack.SysctlSet(nodes, ".net.ipv4.tcp_low_latency",
@@ -571,6 +581,8 @@ int main(int argc, char *argv[])
                     "0");
     stack.SysctlSet(nodes, ".net.ipv4.tcp_reordering",
                     "0");
+
+    stack.SysctlSet(nodes, ".net.mptcp.mptcp_scheduler", sched);
 
     for (int i = 0; i < numberOfNodes; ++i)
     {
@@ -590,7 +602,7 @@ int main(int argc, char *argv[])
         dce.AddArgument("--time");
         dce.AddArgument("10");
         dce.AddArgument ("--bandwidth");
-        dce.AddArgument("1Mbit");
+        dce.AddArgument (bandwidth);
         dce.AddArgument("-R");
         // dce.AddArgument ("-fb");
         // dce.AddArgument ("-f");
@@ -630,7 +642,7 @@ int main(int argc, char *argv[])
     outputConfig2.ConfigureDefaults();
     outputConfig2.ConfigureAttributes();
 
-    pointToPoint.EnablePcapAll("../../pcap/pcap_file");
+    pointToPoint.EnablePcapAll("../../pcap/" + sched);
     Simulator::Stop(Seconds(stopTime));
     Simulator::Run();
     Simulator::Destroy();
