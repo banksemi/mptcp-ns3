@@ -63,6 +63,9 @@ void ChangeSpeed(Ptr<Node> n, Vector speed)
     n->GetObject<ConstantVelocityMobilityModel>()->SetVelocity(speed);
     NS_LOG_UNCOND("************************--------------------Change Speed-------------------------------*****************");
 }
+void PrintTime(float t) {
+    NS_LOG_UNCOND("Time: " << t);
+}
 
 void PrintTcpFlags(std::string key, std::string value)
 {
@@ -113,7 +116,7 @@ int main(int argc, char *argv[])
 
     std::string bufSize = "1073700000";
     //  std::string bufSize = "1073700000";
-    double stopTime = 33.0;
+    double stopTime = 15.0;
     std::string p2pdelay = "0ms";
 
     bool disLte = true;
@@ -223,7 +226,7 @@ int main(int argc, char *argv[])
 
     GlobalValue::Bind("ChecksumEnabled", BooleanValue(true));
 
-    Config::SetDefault ("ns3::BuildingsObstaclePropagationLossModel::NlosAdditionalLoss", DoubleValue (25));
+    Config::SetDefault ("ns3::BuildingsObstaclePropagationLossModel::NlosAdditionalLoss", DoubleValue (24));
 
     NodeContainer nodes, routers;
     uint32_t numberOfNodes = 1;
@@ -532,41 +535,47 @@ int main(int argc, char *argv[])
     // set
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_debug", "0");
 
-    stack.SysctlSet(nodes, ".net.ipv4.tcp_rmem",
-                    "4096 87380 87380");
-    stack.SysctlSet(nodes, ".net.ipv4.tcp_wmem",
-                    "4096 87380 87380");
+
     stack.SysctlSet(nodes, ".net.ipv4.tcp_congestion_control",
                     ccAlg);
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_scheduler",
                     "default");
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_checksum",
                     "1");
+
+    stack.SysctlSet(nodes, ".net.ipv4.tcp_rmem",
+                    "4096 5000000 204217728");
+    stack.SysctlSet(nodes, ".net.ipv4.tcp_wmem",
+                    "4096 5000000 204217728");
+                    /*
     stack.SysctlSet(nodes, ".net.ipv4.tcp_rmem",
                     "4096 99999999 204217728");
     //                       "4096 87380 " +bufSize);
     stack.SysctlSet(nodes, ".net.ipv4.tcp_wmem",
                     "4096 99999999 204217728");
-    // stack.SysctlSet (nodes, ".net.ipv4.tcp_mem",
-    //                  "768174 10242330 15363480");
+                    */
     stack.SysctlSet(nodes, ".net.ipv4.tcp_mem",
                     "204217728 204217728 204217728");
+
+    // stack.SysctlSet (nodes, ".net.ipv4.tcp_mem",
+    //                  "768174 10242330 15363480");
+                    /*
+    stack.SysctlSet(nodes, ".net.ipv4.tcp_mem",
+                    "204217728 204217728 204217728");
+
+
     stack.SysctlSet(nodes, ".net.core.rmem_max",
                     "99999999");
     stack.SysctlSet(nodes, ".net.core.wmem_max",
                     "99999999");
     stack.SysctlSet(nodes, ".net.core.optmem_max",
                     "99999999");
+                    */
     //stack.SysctlSet (nodes, ".net.core.rmem_default",
     //                 "199999999");
     //stack.SysctlSet (nodes, ".net.core.wmem_default",
     //                 "199999999");
-    stack.SysctlSet(nodes, ".net.ipv4.tcp_congestion_control",
-                    ccAlg);
-    stack.SysctlSet(nodes, ".net.mptcp.mptcp_scheduler",
-                    "only_fast");
-    stack.SysctlSet(nodes, ".net.mptcp.mptcp_checksum",
-                    "1");
+
     stack.SysctlSet(nodes, ".net.ipv4.tcp_low_latency",
                     "0");
     stack.SysctlSet(nodes, ".net.ipv4.tcp_no_metrics_save",
@@ -579,8 +588,8 @@ int main(int argc, char *argv[])
                     "250000");
     stack.SysctlSet(nodes, ".net.ipv4.tcp_moderate_rcvbuf",
                     "0");
-    stack.SysctlSet(nodes, ".net.ipv4.tcp_reordering",
-                    "0");
+    //stack.SysctlSet(nodes, ".net.ipv4.tcp_reordering",
+    //                "0");
 
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_scheduler", sched);
 
@@ -630,7 +639,9 @@ int main(int argc, char *argv[])
         apps = dce.Install(nodes.Get(numberOfNodes + i));
         apps.Start(Seconds(1.5));
     }
-
+    for (float i = 0; i < 12; i += 0.1) {
+        Simulator::Schedule(Seconds(i), &PrintTime, i);
+    }
     lteHelper_2->EnablePdcpTraces();
     lteHelper_2->EnableRlcTraces();
 
