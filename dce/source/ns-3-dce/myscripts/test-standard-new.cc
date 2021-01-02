@@ -40,38 +40,84 @@ void setPos (Ptr<Node> n, int x, int y, int z) {
     Vector locVec2 (x, y, z);
     loc->SetPosition (locVec2);
 }
-float Delay(float t, float a, float b, float x) {
-    return t + ((x  - t + a) / a) * b - x;
+
+
+Ipv4InterfaceContainer InstallDevice(const char *DataRate, const char *Delay, Ipv4AddressHelper Address, Ptr<Node> node1, Ptr<Node> node2)
+{    
+    PointToPointHelper pointToPoint;
+    pointToPoint.SetDeviceAttribute ("DataRate", StringValue (DataRate));
+    pointToPoint.SetChannelAttribute ("Delay", StringValue (Delay)); // 별도 옵션
+    NetDeviceContainer devices = pointToPoint.Install (node1, node2);
+    Ipv4InterfaceContainer if1 = Address.Assign (devices);
+
+
+    pointToPoint.EnablePcapAll("../../pcap/pcap");
+    return if1;
+}
+void AddRouteForNode(Ptr<Node> node, Ipv4InterfaceContainer if1, int node_index, const char* ipbase, bool is_default_gateway = false) {
+    std::ostringstream cmd_oss;
+    cmd_oss.str ("");
+    std::pair<ns3::Ptr<ns3::Ipv4>, unsigned int> node_ipv4 =  if1.Get(node_index);
+
+    cmd_oss << "\n* Node Route Table *";
+    NS_LOG_UNCOND (cmd_oss.str ().c_str ());
+
+    cmd_oss.str ("");
+    cmd_oss << "rule add from " << if1.GetAddress (node_index, 0) << " table " << (node_ipv4.second + 1);
+    NS_LOG_UNCOND (cmd_oss.str ().c_str ());
+    LinuxStackHelper::RunIp (node, Seconds (0.1), cmd_oss.str().c_str());
+    
+    cmd_oss.str ("");
+    cmd_oss << "route add " << ipbase << "/24 dev sim" << node_ipv4.second  << " scope link table " << (node_ipv4.second +1);
+    NS_LOG_UNCOND (cmd_oss.str().c_str());
+    LinuxStackHelper::RunIp (node, Seconds (0.1), cmd_oss.str().c_str());
+
+    cmd_oss.str ("");
+    cmd_oss << "route add default via " << if1.GetAddress (node_index != 1, 0) << " dev sim" << node_ipv4.second  << " table " << (node_ipv4.second +1);
+    NS_LOG_UNCOND (cmd_oss.str().c_str());
+    LinuxStackHelper::RunIp (node, Seconds (0.1), cmd_oss.str().c_str());
+
+    if (is_default_gateway) {
+        cmd_oss.str ("");
+        cmd_oss << "route add default via " << if1.GetAddress (node_index != 1, 0) << " dev sim" << node_ipv4.second;
+        NS_LOG_UNCOND (cmd_oss.str().c_str());
+        LinuxStackHelper::RunIp (node, Seconds (0.1), cmd_oss.str().c_str());
+    }
 }
 
-template <typename T>
-std::string to_string_with_precision(const T a_value, const int n = 6)
-{
-    std::ostringstream out;
-    out.precision(n);
-    out << std::fixed << a_value;
-    return out.str();
+void AddRouteForRouter(Ptr<Node> router, Ipv4InterfaceContainer if1, int router_index, const char* ipbase) {
+
+    std::ostringstream cmd_oss;
+    cmd_oss.str ("");
+    std::pair<ns3::Ptr<ns3::Ipv4>, unsigned int> router_ipv4 =  if1.Get(router_index);
+
+    cmd_oss << "\n* Router Route Table *";
+    NS_LOG_UNCOND (cmd_oss.str ().c_str ());
+
+    cmd_oss.str ("");
+    cmd_oss << "rule add from " << ipbase << "/24 via " << if1.GetAddress (router_index, 0) << " dev sim" << router_ipv4.second;
+    NS_LOG_UNCOND (cmd_oss.str ().c_str ());
+    LinuxStackHelper::RunIp (router, Seconds (0.1), cmd_oss.str().c_str());
 }
 
 int main (int argc, char *argv[]) {
     LogComponentEnable ("DceMptcpTest", LOG_LEVEL_ALL);
-    uint32_t nRtrs = 2;
+    uint32_t ntraffic_nodes = 1;
     CommandLine cmd;
     std::string sched = "default";
-    bool rtt_change = true;
     std::string bandwidth = "0";
 
     cmd.AddValue ("sched", "sched value", sched);
-    cmd.AddValue ("rtt_change", "rtt_change value", rtt_change);
     cmd.AddValue ("bandwidth", "bandwidth value", bandwidth);
     cmd.Parse (argc, argv);
 
     NS_LOG_UNCOND ("sched " << sched);
     NS_LOG_UNCOND ("bandwidth " << bandwidth);
     
-    NodeContainer nodes, routers;
+    NodeContainer nodes, routers, traffic_nodes;
     nodes.Create (2);
-    routers.Create (nRtrs);
+    routers.Create (3);
+    routers.Create (ntraffic_nodes);
 
     DceManagerHelper dceManager;
     dceManager.SetTaskManagerAttribute ("FiberManagerType", StringValue ("UcontextFiberManager"));
@@ -82,76 +128,48 @@ int main (int argc, char *argv[]) {
     LinuxStackHelper stack;
     stack.Install (nodes);
 
-
     LinuxStackHelper router_stack;
     stack.Install (routers);
 
+    LinuxStackHelper traffic_nodes_stack;
+    stack.Install (traffic_nodes);
+
+    NetDeviceContainer devices;
     PointToPointHelper pointToPoint;
-    NetDeviceContainer devices1, devices2;
-    Ipv4AddressHelper address1, address2;
+    Ipv4AddressHelper address[10];
+    std::ostringstream address_base_str[10];
+    char address_base[10][100];
+    Ipv4InterfaceContainer ipinterface;
     std::ostringstream cmd_oss;
-    address1.SetBase ("10.1.0.0", "255.255.255.0");
-    address2.SetBase ("10.2.0.0", "255.255.255.0");
-
-    for (uint32_t i = 0; i < nRtrs; i++) {
-        // Left 링크의 pointToPoint 속성은 DCE 스케줄에 의해 나중에 다시 세팅됨.
-        // Left link
-        pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("100Mbps"));
-        pointToPoint.SetChannelAttribute ("Delay", StringValue ("5ms")); // 별도 옵션
-        devices1 = pointToPoint.Install (nodes.Get (0), routers.Get (i));
-        // Assign ip addresses
-        Ipv4InterfaceContainer if1 = address1.Assign (devices1);
-        NS_LOG_UNCOND ("IP " << if1.GetAddress (0, 0));
-        address1.NewNetwork ();
-
-        NS_LOG_UNCOND ("IP2 " << if1.GetAddress (1, 0));
-        // setup ip routes
-        cmd_oss.str ("");
-        cmd_oss << "rule add from " << if1.GetAddress (0, 0) << " table " << (i+1);
-        LinuxStackHelper::RunIp (nodes.Get (0), Seconds (0.1), cmd_oss.str ().c_str ());
-
-        cmd_oss.str ("");
-        cmd_oss << "route add 10.1." << i << ".0/24 dev sim" << i << " scope link table " << (i+1);
-        LinuxStackHelper::RunIp (nodes.Get (0), Seconds (0.1), cmd_oss.str ().c_str ());
-
-        cmd_oss.str ("");
-        cmd_oss << "route add default via " << if1.GetAddress (1, 0) << " dev sim" << i << " table " << (i+1);
-        LinuxStackHelper::RunIp (nodes.Get (0), Seconds (0.1), cmd_oss.str ().c_str ());
-
-
-        cmd_oss.str ("");
-        cmd_oss << "route add 10.1."<< i <<".0/24 via " << if1.GetAddress (1, 0) << " dev sim0";
-        LinuxStackHelper::RunIp (routers.Get (i), Seconds (0.2), cmd_oss.str ().c_str ());
-
-
-        // Right link
-        pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("100Mbps"));
-        pointToPoint.SetChannelAttribute ("Delay", StringValue ("5ms"));
-        devices2 = pointToPoint.Install (nodes.Get (1), routers.Get (i));
-        // Assign ip addresses
-        Ipv4InterfaceContainer if2 = address2.Assign (devices2);
-        address2.NewNetwork ();
-        // setup ip routes
-        cmd_oss.str ("");
-        cmd_oss << "rule add from " << if2.GetAddress (0, 0) << " table " << (i+1);
-        LinuxStackHelper::RunIp (nodes.Get (1), Seconds (0.1), cmd_oss.str ().c_str ());
-        cmd_oss.str ("");
-        cmd_oss << "route add 10.2." << i << ".0/24 dev sim" << i << " scope link table " << (i+1);
-        LinuxStackHelper::RunIp (nodes.Get (1), Seconds (0.1), cmd_oss.str ().c_str ());
-        cmd_oss.str ("");
-        cmd_oss << "route add default via " << if2.GetAddress (1, 0) << " dev sim" << i << " table " << (i+1);
-        LinuxStackHelper::RunIp (nodes.Get (1), Seconds (0.1), cmd_oss.str ().c_str ());
-        cmd_oss.str ("");
-        cmd_oss << "route add 10.2."<< i <<".0/24 via " << if2.GetAddress (1, 0) << " dev sim1";
-        LinuxStackHelper::RunIp (routers.Get (i), Seconds (0.2), cmd_oss.str ().c_str ());
-
-        setPos (routers.Get (i), 50, i * 20, 0);
+    for (int i = 0; i< 10; i++) {
+        sprintf(address_base[i], "10.%d.0.0", i);
+        address[i].SetBase (address_base[i], "255.255.255.0");
     }
 
+
+    ipinterface = InstallDevice("100Mbps", "4ms", address[1], nodes.Get (0), routers.Get (0));
+    AddRouteForNode(nodes.Get(0), ipinterface, 0, address_base[1], true);
+    AddRouteForRouter(routers.Get(0),ipinterface, 1, address_base[1]);
+
+    ipinterface = InstallDevice("100Mbps", "4ms", address[2], nodes.Get (1), routers.Get (0));
+    AddRouteForNode(nodes.Get(1), ipinterface, 0, address_base[2], true);
+    AddRouteForRouter(routers.Get(0),ipinterface, 1, address_base[2]);
+
+        ipinterface = InstallDevice("60Mbps", "5ms", address[3], nodes.Get (0), routers.Get (1));
+    AddRouteForNode(nodes.Get(0), ipinterface, 0, address_base[3], false);
+    AddRouteForRouter(routers.Get(1),ipinterface, 1, address_base[3]);
+
+    ipinterface = InstallDevice("100Mbps", "10ms", address[4], nodes.Get (1), routers.Get (1));
+    AddRouteForNode(nodes.Get(1), ipinterface, 0, address_base[4], false);
+    AddRouteForRouter(routers.Get(1),ipinterface, 1, address_base[4]);
+
+
+    NS_LOG_UNCOND ("bandwidth " << bandwidth);
+
+
   // default route
-    LinuxStackHelper::RunIp (nodes.Get (0), Seconds (0.1), "route add default via 10.1.0.2 dev sim0");
-    LinuxStackHelper::RunIp (nodes.Get (1), Seconds (0.1), "route add default via 10.2.0.2 dev sim0");
-    // LinuxStackHelper::RunIp (nodes.Get (0), Seconds (0.1), "rule show");
+    //LinuxStackHelper::RunIp (nodes.Get (0), Seconds (0.1), "route add default via 10.1.0.2 dev sim0");
+    //LinuxStackHelper::RunIp (nodes.Get (1), Seconds (0.1), "route add default via 10.2.0.2 dev sim0");
 
 
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_enabled", "1");
@@ -191,7 +209,7 @@ int main (int argc, char *argv[]) {
     dce.AddArgument ("-i");
     dce.AddArgument ("1.0");
     dce.AddArgument ("--time");
-    dce.AddArgument ("10");
+    dce.AddArgument ("30");
     dce.AddArgument ("--bandwidth");
     dce.AddArgument (bandwidth);
     //dce.AddArgument ("--json");
@@ -211,7 +229,6 @@ int main (int argc, char *argv[]) {
     apps = dce.Install (nodes.Get (1));
     apps.Start (Seconds (1.5));
 
-    pointToPoint.EnablePcapAll("../../pcap/" + sched);
 
     Simulator::Stop (Seconds (100));
     Simulator::Run ();
