@@ -42,24 +42,30 @@ void setPos (Ptr<Node> n, int x, int y, int z) {
 }
 
 
-Ipv4InterfaceContainer InstallDevice(const char *DataRate, const char *Delay, Ipv4AddressHelper Address, Ptr<Node> node1, Ptr<Node> node2)
+Ipv4InterfaceContainer InstallDevice(const char *DataRate, const char *Delay, Ipv4AddressHelper Address, Ptr<Node> node1, Ptr<Node> node2, int queue=50)
 {    
-    PointToPointHelper pointToPoint;
-    pointToPoint.SetDeviceAttribute ("DataRate", StringValue (DataRate));
-    pointToPoint.SetChannelAttribute ("Delay", StringValue (Delay)); // 별도 옵션
-    NetDeviceContainer devices = pointToPoint.Install (node1, node2);
+    PointToPointHelper* pointToPoint = new PointToPointHelper();
+    pointToPoint->SetDeviceAttribute ("DataRate", StringValue (DataRate));
+    pointToPoint->SetChannelAttribute ("Delay", StringValue (Delay)); // 별도 옵션
+    pointToPoint->SetQueue ("ns3::DropTailQueue",
+                            "Mode", StringValue ("QUEUE_MODE_PACKETS"),
+                            "MaxPackets", UintegerValue (queue));
+
+    NetDeviceContainer devices = pointToPoint->Install (node1, node2);
     Ipv4InterfaceContainer if1 = Address.Assign (devices);
 
 
-    pointToPoint.EnablePcapAll("../../pcap/pcap");
+
+
+    pointToPoint->EnablePcapAll("../../pcap/pcap");
     return if1;
 }
-void AddRouteForNode(Ptr<Node> node, Ipv4InterfaceContainer if1, int node_index, const char* ipbase, bool is_default_gateway = false) {
+void AddRouteForNode(int i, Ptr<Node> node, Ipv4InterfaceContainer if1, int node_index, const char* ipbase, bool is_default_gateway = false) {
     std::ostringstream cmd_oss;
     cmd_oss.str ("");
     std::pair<ns3::Ptr<ns3::Ipv4>, unsigned int> node_ipv4 =  if1.Get(node_index);
 
-    cmd_oss << "\n* Node Route Table *";
+    cmd_oss << "\n* "<< i << "Node Route Table *";
     NS_LOG_UNCOND (cmd_oss.str ().c_str ());
 
     cmd_oss.str ("");
@@ -85,17 +91,18 @@ void AddRouteForNode(Ptr<Node> node, Ipv4InterfaceContainer if1, int node_index,
     }
 }
 
-void AddRouteForRouter(Ptr<Node> router, Ipv4InterfaceContainer if1, int router_index, const char* ipbase) {
+void AddRouteForRouter(int i, Ptr<Node> router, Ipv4InterfaceContainer if1, int router_index, const char* ipbase) {
 
     std::ostringstream cmd_oss;
     cmd_oss.str ("");
     std::pair<ns3::Ptr<ns3::Ipv4>, unsigned int> router_ipv4 =  if1.Get(router_index);
 
-    cmd_oss << "\n* Router Route Table *";
+    cmd_oss << "\n* "<< i << "Router Route Table *";
     NS_LOG_UNCOND (cmd_oss.str ().c_str ());
 
     cmd_oss.str ("");
-    cmd_oss << "rule add from " << ipbase << "/24 via " << if1.GetAddress (router_index, 0) << " dev sim" << router_ipv4.second;
+    // cmd_oss << "rule add from " << ipbase << "/24 via " << if1.GetAddress (router_index, 0) << " dev sim" << router_ipv4.second;
+    cmd_oss << "route add " << ipbase << "/24 dev sim" << router_ipv4.second;
     NS_LOG_UNCOND (cmd_oss.str ().c_str ());
     LinuxStackHelper::RunIp (router, Seconds (0.1), cmd_oss.str().c_str());
 }
@@ -147,21 +154,30 @@ int main (int argc, char *argv[]) {
     }
 
 
-    ipinterface = InstallDevice("100Mbps", "4ms", address[1], nodes.Get (0), routers.Get (0));
-    AddRouteForNode(nodes.Get(0), ipinterface, 0, address_base[1], true);
-    AddRouteForRouter(routers.Get(0),ipinterface, 1, address_base[1]);
+    ipinterface = InstallDevice("100Mbps", "5ms", address[1], nodes.Get (0), routers.Get (0));
+    AddRouteForNode(0, nodes.Get(0), ipinterface, 0, address_base[1], true);
+    AddRouteForRouter(0, routers.Get(0),ipinterface, 1, address_base[1]);
 
-    ipinterface = InstallDevice("100Mbps", "4ms", address[2], nodes.Get (1), routers.Get (0));
-    AddRouteForNode(nodes.Get(1), ipinterface, 0, address_base[2], true);
-    AddRouteForRouter(routers.Get(0),ipinterface, 1, address_base[2]);
 
-        ipinterface = InstallDevice("60Mbps", "5ms", address[3], nodes.Get (0), routers.Get (1));
-    AddRouteForNode(nodes.Get(0), ipinterface, 0, address_base[3], false);
-    AddRouteForRouter(routers.Get(1),ipinterface, 1, address_base[3]);
+    ipinterface = InstallDevice("100Mbps", "5ms", address[2], routers.Get (0), routers.Get (1), 1000);
+    AddRouteForRouter(0, routers.Get(0), ipinterface, 0, address_base[2]);
+    AddRouteForRouter(0, routers.Get(0), ipinterface, 0, address_base[3]);
+    AddRouteForRouter(1, routers.Get(1), ipinterface, 1, address_base[2]);
+    AddRouteForRouter(1, routers.Get(1), ipinterface, 1, address_base[1]);
 
-    ipinterface = InstallDevice("100Mbps", "10ms", address[4], nodes.Get (1), routers.Get (1));
-    AddRouteForNode(nodes.Get(1), ipinterface, 0, address_base[4], false);
-    AddRouteForRouter(routers.Get(1),ipinterface, 1, address_base[4]);
+
+
+    ipinterface = InstallDevice("100Mbps", "5ms", address[3], nodes.Get (1), routers.Get (1));
+    AddRouteForNode(1, nodes.Get(1), ipinterface, 0, address_base[3], true);
+    AddRouteForRouter(1, routers.Get(1),ipinterface, 1, address_base[3]);
+
+    ipinterface = InstallDevice("100Mbps", "2ms", address[4], nodes.Get (0), routers.Get (2));
+    AddRouteForNode(0, nodes.Get(0), ipinterface, 0, address_base[4]);
+    AddRouteForRouter(2, routers.Get(2),ipinterface, 1, address_base[4]);
+
+    ipinterface = InstallDevice("100Mbps", "2ms", address[5], nodes.Get (1), routers.Get (2));
+    AddRouteForNode(1, nodes.Get(1), ipinterface, 0, address_base[5]);
+    AddRouteForRouter(2, routers.Get(2),ipinterface, 1, address_base[5]);
 
 
     NS_LOG_UNCOND ("bandwidth " << bandwidth);
@@ -194,8 +210,6 @@ int main (int argc, char *argv[]) {
     stack.SysctlSet(nodes, ".net.ipv4.tcp_moderate_rcvbuf",
                     "0");
 
-    router_stack.SysctlSet(nodes, ".net.core.netdev_max_backlog",
-                    "1");
     DceApplicationHelper dce;
     ApplicationContainer apps;
 
@@ -205,7 +219,7 @@ int main (int argc, char *argv[]) {
     dce.ResetArguments ();
     dce.ResetEnvironment ();
     dce.AddArgument ("-c");
-    dce.AddArgument ("10.2.0.1");
+    dce.AddArgument ("10.3.0.1");
     dce.AddArgument ("-i");
     dce.AddArgument ("1.0");
     dce.AddArgument ("--time");
