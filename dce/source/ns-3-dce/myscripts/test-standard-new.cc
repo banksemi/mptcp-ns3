@@ -30,6 +30,8 @@
 using namespace ns3;
 NS_LOG_COMPONENT_DEFINE ("DceMptcpTest");
 
+std::string sched = "default";
+
 void PrintPid (ApplicationContainer apps, DceApplicationHelper dce) {
     NS_LOG_UNCOND ("PID " << dce.GetPid (PeekPointer (apps.Get (0))));
 }
@@ -42,7 +44,7 @@ void setPos (Ptr<Node> n, int x, int y, int z) {
 }
 
 
-Ipv4InterfaceContainer InstallDevice(const char *DataRate, const char *Delay, Ipv4AddressHelper Address, Ptr<Node> node1, Ptr<Node> node2, int queue=50)
+Ipv4InterfaceContainer InstallDevice(const char *DataRate, const char *Delay, Ipv4AddressHelper Address, Ptr<Node> node1, Ptr<Node> node2, int queue=100)
 {    
     PointToPointHelper* pointToPoint = new PointToPointHelper();
     pointToPoint->SetDeviceAttribute ("DataRate", StringValue (DataRate));
@@ -57,7 +59,7 @@ Ipv4InterfaceContainer InstallDevice(const char *DataRate, const char *Delay, Ip
 
 
 
-    pointToPoint->EnablePcapAll("../../pcap/pcap");
+    pointToPoint->EnablePcapAll("../../pcap/" + sched);
     return if1;
 }
 void AddRouteForNode(int i, Ptr<Node> node, Ipv4InterfaceContainer if1, int node_index, const char* ipbase, bool is_default_gateway = false) {
@@ -90,7 +92,6 @@ void AddRouteForNode(int i, Ptr<Node> node, Ipv4InterfaceContainer if1, int node
         LinuxStackHelper::RunIp (node, Seconds (0.1), cmd_oss.str().c_str());
     }
 }
-
 void AddRouteForRouter(int i, Ptr<Node> router, Ipv4InterfaceContainer if1, int router_index, const char* ipbase) {
 
     std::ostringstream cmd_oss;
@@ -109,10 +110,9 @@ void AddRouteForRouter(int i, Ptr<Node> router, Ipv4InterfaceContainer if1, int 
 
 int main (int argc, char *argv[]) {
     LogComponentEnable ("DceMptcpTest", LOG_LEVEL_ALL);
-    uint32_t ntraffic_nodes = 1;
+    uint32_t ntraffic_nodes = 4;
     CommandLine cmd;
-    std::string sched = "default";
-    std::string bandwidth = "0";
+    std::string bandwidth = "1Mbit";
 
     cmd.AddValue ("sched", "sched value", sched);
     cmd.AddValue ("bandwidth", "bandwidth value", bandwidth);
@@ -124,13 +124,14 @@ int main (int argc, char *argv[]) {
     NodeContainer nodes, routers, traffic_nodes;
     nodes.Create (2);
     routers.Create (3);
-    routers.Create (ntraffic_nodes);
+    traffic_nodes.Create (ntraffic_nodes * 2);
 
     DceManagerHelper dceManager;
     dceManager.SetTaskManagerAttribute ("FiberManagerType", StringValue ("UcontextFiberManager"));
     dceManager.SetNetworkStack ("ns3::LinuxSocketFdFactory", "Library", StringValue ("liblinux.so"));
     dceManager.Install (nodes);
     dceManager.Install (routers);
+    dceManager.Install (traffic_nodes);
 
     LinuxStackHelper stack;
     stack.Install (nodes);
@@ -143,42 +144,57 @@ int main (int argc, char *argv[]) {
 
     NetDeviceContainer devices;
     PointToPointHelper pointToPoint;
-    Ipv4AddressHelper address[10];
-    std::ostringstream address_base_str[10];
-    char address_base[10][100];
+    Ipv4AddressHelper address[20];
+    char address_base[20][100];
     Ipv4InterfaceContainer ipinterface;
+    Ipv4InterfaceContainer bottleneck_ipinterface;
     std::ostringstream cmd_oss;
-    for (int i = 0; i< 10; i++) {
+    for (int i = 0; i< 20; i++) {
         sprintf(address_base[i], "10.%d.0.0", i);
         address[i].SetBase (address_base[i], "255.255.255.0");
     }
+    
 
-
-    ipinterface = InstallDevice("100Mbps", "5ms", address[1], nodes.Get (0), routers.Get (0));
+    ipinterface = InstallDevice("100Mbps", "1ms", address[1], nodes.Get (0), routers.Get (0));
     AddRouteForNode(0, nodes.Get(0), ipinterface, 0, address_base[1], true);
     AddRouteForRouter(0, routers.Get(0),ipinterface, 1, address_base[1]);
 
 
-    ipinterface = InstallDevice("100Mbps", "5ms", address[2], routers.Get (0), routers.Get (1), 1000);
-    AddRouteForRouter(0, routers.Get(0), ipinterface, 0, address_base[2]);
-    AddRouteForRouter(0, routers.Get(0), ipinterface, 0, address_base[3]);
-    AddRouteForRouter(1, routers.Get(1), ipinterface, 1, address_base[2]);
-    AddRouteForRouter(1, routers.Get(1), ipinterface, 1, address_base[1]);
+    bottleneck_ipinterface = InstallDevice("100Mbps", "3ms", address[2], routers.Get (0), routers.Get (1), 1000);
+    AddRouteForRouter(0, routers.Get(0), bottleneck_ipinterface, 0, address_base[2]);
+    AddRouteForRouter(0, routers.Get(0), bottleneck_ipinterface, 0, address_base[3]);
+    AddRouteForRouter(1, routers.Get(1), bottleneck_ipinterface, 1, address_base[2]);
+    AddRouteForRouter(1, routers.Get(1), bottleneck_ipinterface, 1, address_base[1]);
 
-
-
-    ipinterface = InstallDevice("100Mbps", "5ms", address[3], nodes.Get (1), routers.Get (1));
+    ipinterface = InstallDevice("100Mbps", "1ms", address[3], nodes.Get (1), routers.Get (1));
     AddRouteForNode(1, nodes.Get(1), ipinterface, 0, address_base[3], true);
     AddRouteForRouter(1, routers.Get(1),ipinterface, 1, address_base[3]);
 
-    ipinterface = InstallDevice("100Mbps", "2ms", address[4], nodes.Get (0), routers.Get (2));
+    ipinterface = InstallDevice("100Mbps", "4ms", address[4], nodes.Get (0), routers.Get (2));
     AddRouteForNode(0, nodes.Get(0), ipinterface, 0, address_base[4]);
     AddRouteForRouter(2, routers.Get(2),ipinterface, 1, address_base[4]);
 
-    ipinterface = InstallDevice("100Mbps", "2ms", address[5], nodes.Get (1), routers.Get (2));
+    ipinterface = InstallDevice("100Mbps", "4ms", address[5], nodes.Get (1), routers.Get (2));
     AddRouteForNode(1, nodes.Get(1), ipinterface, 0, address_base[5]);
     AddRouteForRouter(2, routers.Get(2),ipinterface, 1, address_base[5]);
 
+    int default_address_no = 6;
+    for (int i = 0; i < ntraffic_nodes; i ++) {
+        ipinterface = InstallDevice("100Mbps", "1ms", address[default_address_no + i * 2], traffic_nodes.Get (i * 2), routers.Get (0));
+        AddRouteForNode(default_address_no + i * 2, traffic_nodes.Get(i * 2), ipinterface, 0, address_base[default_address_no + i * 2], true);
+        AddRouteForRouter(0, routers.Get(0),ipinterface, 1, address_base[default_address_no + i * 2]);
+
+        AddRouteForRouter(0, routers.Get(0), bottleneck_ipinterface, 0, address_base[default_address_no + i * 2 + 1]);
+        AddRouteForRouter(1, routers.Get(1), bottleneck_ipinterface, 1, address_base[default_address_no + i * 2]);
+
+
+        ipinterface = InstallDevice("100Mbps", "1ms", address[default_address_no + i * 2 + 1], traffic_nodes.Get (i * 2 + 1), routers.Get (1));
+        AddRouteForNode(default_address_no + i * 2 + 1, traffic_nodes.Get(i * 2 + 1), ipinterface, 0, address_base[default_address_no + i * 2 + 1], true);
+        AddRouteForRouter(1, routers.Get(1),ipinterface, 1, address_base[default_address_no + i * 2 + 1]);
+
+
+    
+    }
 
     NS_LOG_UNCOND ("bandwidth " << bandwidth);
 
@@ -243,6 +259,44 @@ int main (int argc, char *argv[]) {
     apps = dce.Install (nodes.Get (1));
     apps.Start (Seconds (1.5));
 
+    for (int i = 0; i < ntraffic_nodes; i ++) {
+        for(float time = 7; time < 32; time += 10) {
+            // iperf 클라이언트를 노드 0에 세팅
+            dce.SetStackSize (1 << 20);
+            dce.SetBinary ("iperf3");
+            dce.ResetArguments ();
+            dce.ResetEnvironment ();
+            dce.AddArgument ("-c");
+            cmd_oss.str ("");
+            cmd_oss << "10." << (default_address_no + i * 2 + 1) << ".0.1";
+            dce.AddArgument (cmd_oss.str ().c_str ());
+            NS_LOG_UNCOND (cmd_oss.str ().c_str ());
+
+            dce.AddArgument ("-i");
+            dce.AddArgument ("1.0");
+            dce.AddArgument ("--time");
+            dce.AddArgument ("5");
+            dce.AddArgument ("--bandwidth");
+            dce.AddArgument ("0");
+            //dce.AddArgument ("--json");
+            dce.AddArgument ("-R");
+            apps = dce.Install (traffic_nodes.Get(i * 2));
+            apps.Start (Seconds (time));
+
+            // iperf3 결과를 보기 위해 iperf3 pid 출력
+            Simulator::Schedule (Seconds (time + 0.5), &PrintPid, apps, dce);
+
+            // iperf 서버를 노드 1에 세팅
+            dce.SetStackSize (1 << 20);
+            dce.SetBinary ("iperf3");
+            dce.ResetArguments ();
+            dce.ResetEnvironment ();
+            dce.AddArgument ("-s");
+            apps = dce.Install (traffic_nodes.Get(i * 2 + 1));
+            apps.Start (Seconds (time - 0.5));
+        }
+    }
+    
 
     Simulator::Stop (Seconds (100));
     Simulator::Run ();
