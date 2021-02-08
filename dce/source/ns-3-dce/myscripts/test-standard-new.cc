@@ -44,14 +44,16 @@ void setPos (Ptr<Node> n, int x, int y, int z) {
 }
 
 
-Ipv4InterfaceContainer InstallDevice(const char *DataRate, const char *Delay, Ipv4AddressHelper Address, Ptr<Node> node1, Ptr<Node> node2, int queue=100)
+Ipv4InterfaceContainer InstallDevice(const char *DataRate, const char *Delay, Ipv4AddressHelper Address, Ptr<Node> node1, Ptr<Node> node2, int queue=0)
 {    
     PointToPointHelper* pointToPoint = new PointToPointHelper();
     pointToPoint->SetDeviceAttribute ("DataRate", StringValue (DataRate));
     pointToPoint->SetChannelAttribute ("Delay", StringValue (Delay)); // 별도 옵션
-    pointToPoint->SetQueue ("ns3::DropTailQueue",
+    if (queue != 0) {
+        pointToPoint->SetQueue ("ns3::DropTailQueue",
                             "Mode", StringValue ("QUEUE_MODE_PACKETS"),
                             "MaxPackets", UintegerValue (queue));
+    }
 
     NetDeviceContainer devices = pointToPoint->Install (node1, node2);
     Ipv4InterfaceContainer if1 = Address.Assign (devices);
@@ -160,7 +162,7 @@ int main (int argc, char *argv[]) {
     AddRouteForRouter(0, routers.Get(0),ipinterface, 1, address_base[1]);
 
 
-    bottleneck_ipinterface = InstallDevice("100Mbps", "3ms", address[2], routers.Get (0), routers.Get (1), 1000);
+    bottleneck_ipinterface = InstallDevice("100Mbps", "3ms", address[2], routers.Get (0), routers.Get (1), 500);
     AddRouteForRouter(0, routers.Get(0), bottleneck_ipinterface, 0, address_base[2]);
     AddRouteForRouter(0, routers.Get(0), bottleneck_ipinterface, 0, address_base[3]);
     AddRouteForRouter(1, routers.Get(1), bottleneck_ipinterface, 1, address_base[2]);
@@ -208,23 +210,6 @@ int main (int argc, char *argv[]) {
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_scheduler", sched);
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_checksum", "1");
 
-    stack.SysctlSet(nodes, ".net.ipv4.tcp_rmem",
-                    "4096 5000000 204217728");
-    stack.SysctlSet(nodes, ".net.ipv4.tcp_wmem",
-                    "4096 5000000 204217728");
-    stack.SysctlSet(nodes, ".net.ipv4.tcp_mem",
-                    "204217728 204217728 204217728");
-
-    stack.SysctlSet(nodes, ".net.ipv4.tcp_no_metrics_save",
-                    "1");
-    stack.SysctlSet(nodes, ".net.ipv4.tcp_timestamps",
-                    "1");
-    stack.SysctlSet(nodes, ".net.ipv4.tcp_sack",
-                    "1");
-    stack.SysctlSet(nodes, ".net.core.netdev_max_backlog",
-                    "250000");
-    stack.SysctlSet(nodes, ".net.ipv4.tcp_moderate_rcvbuf",
-                    "0");
 
     DceApplicationHelper dce;
     ApplicationContainer apps;
