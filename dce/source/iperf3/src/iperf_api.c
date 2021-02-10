@@ -1037,10 +1037,11 @@ iperf_check_throttle(struct iperf_stream *sp, struct timeval *nowP)
 
     if (sp->test->done)
         return;
-
     seconds = timeval_diff(&sp->result->start_time, nowP);
     // seconds = timeval_diff(&last_send_time, nowP);
-    target_bits = 1782579 * (int)(seconds / 1);
+    double _target_MB = 1.3 / 4; // 1 seconds
+    int time_unit = 4;
+    target_bits = (_target_MB * 1024 * 1024 * 8) * time_unit * (int)(seconds / time_unit);
 
     if (last_target_bit != target_bits) {
         last_target_bit = target_bits;
@@ -1050,7 +1051,7 @@ iperf_check_throttle(struct iperf_stream *sp, struct timeval *nowP)
     seconds = timeval_diff(&target_update_time, nowP);
     bits_per_second = (sp->result->bytes_sent - last_bytes_sent) * 8 / seconds;
 
-    if (bits_per_second < sp->test->settings->rate && target_bits > sp->result->bytes_sent) { //bits_per_second < sp->test->settings->rate
+    if (target_bits / 8 > sp->result->bytes_sent) { //bits_per_second < sp->test->settings->rate
         sp->green_light = 1;
         FD_SET(sp->socket, &sp->test->write_set);
     } else {
