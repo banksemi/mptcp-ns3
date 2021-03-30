@@ -1,3 +1,5 @@
+.vs
+.vscode/*
 logs/*.txt
 logs/*.pcap
 *~
