@@ -319,10 +319,10 @@ int main(int argc, char *argv[])
 */
     Ptr<Building> c ;
     c = CreateObject<Building>();
-    c->SetBoundaries(Box(9, 9.5,-6,-2,0,30));
+    c->SetBoundaries(Box(9.8, 9.9, -5, -1,0,30));
 
     c = CreateObject<Building>();
-    c->SetBoundaries(Box(9, 9.5,2,6,0,30));
+    c->SetBoundaries(Box(9.8, 9.9, 3, 7,0,30));
 /*
     c = CreateObject<Building>();
     c->SetBoundaries(Box(0, 100,20,40,0,100));
@@ -609,10 +609,13 @@ int main(int argc, char *argv[])
         dce.AddArgument("-i");
         dce.AddArgument("1.0");
         dce.AddArgument("--time");
-        dce.AddArgument("10");
+        dce.AddArgument("12");
+        dce.AddArgument ("-l");
+        dce.AddArgument ("4K");
         dce.AddArgument ("--bandwidth");
         dce.AddArgument (bandwidth);
         dce.AddArgument("-R");
+
         // dce.AddArgument ("-fb");
         // dce.AddArgument ("-f");
         // dce.AddArgument ("m");
