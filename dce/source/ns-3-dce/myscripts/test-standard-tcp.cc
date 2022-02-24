@@ -86,9 +86,9 @@ int main (int argc, char *argv[]) {
     LogComponentEnable ("DceMptcpTest", LOG_LEVEL_ALL);
     uint32_t nRtrs = 2;
     CommandLine cmd;
-    std::string sched = "only_fast";
-    bool rtt_change = true;
-    std::string bandwidth = "2Mbit";
+    std::string sched = "default";
+    bool rtt_change = false;
+    std::string bandwidth = "0";
 
     cmd.AddValue ("sched", "sched value", sched);
     cmd.AddValue ("rtt_change", "rtt_change value", rtt_change);
@@ -119,7 +119,9 @@ int main (int argc, char *argv[]) {
     std::ostringstream cmd_oss;
     address1.SetBase ("10.1.0.0", "255.255.255.0");
     address2.SetBase ("10.2.0.0", "255.255.255.0");
-
+    pointToPoint.SetQueue("ns3::DropTailQueue",
+        "Mode", StringValue("QUEUE_MODE_PACKETS"),
+        "MaxPackets", UintegerValue(5));
     for (uint32_t i = 0; i < nRtrs; i++) {
         // Left 링크의 pointToPoint 속성은 DCE 스케줄에 의해 나중에 다시 세팅됨.
         // Left link
@@ -173,7 +175,7 @@ int main (int argc, char *argv[]) {
     LinuxStackHelper::RunIp (nodes.Get (0), Seconds (0.1), "rule show");
 
 
-    stack.SysctlSet(nodes, ".net.mptcp.mptcp_enabled", "1");
+    stack.SysctlSet(nodes, ".net.mptcp.mptcp_enabled", "0");
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_scheduler", sched);
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_checksum", "1");
 
@@ -192,14 +194,12 @@ int main (int argc, char *argv[]) {
     dce.AddArgument ("-i");
     dce.AddArgument ("1.0");
     dce.AddArgument ("--time");
-    dce.AddArgument ("32");
+    dce.AddArgument ("30");
     dce.AddArgument ("--bandwidth");
     dce.AddArgument (bandwidth);
-    dce.AddArgument ("-l");
-    dce.AddArgument ("4K");
+
     //dce.AddArgument ("--json");
     dce.AddArgument ("-R");
-    // dce.AddArgument ("-N");
     apps = dce.Install (nodes.Get (0));
     apps.Start (Seconds (2.0));
     // iperf3 결과를 보기 위해 iperf3 pid 출력
@@ -211,15 +211,14 @@ int main (int argc, char *argv[]) {
     dce.ResetArguments ();
     dce.ResetEnvironment ();
     dce.AddArgument ("-s");
-
     apps = dce.Install (nodes.Get (1));
     apps.Start (Seconds (1.5));
 
-    StringValue set_bandwidth1 = StringValue("100Mbps");
-    int set_rtt1 = 4;
+    StringValue set_bandwidth1 = StringValue("5Mbps");
+    int set_rtt1 = 3;
 
-    StringValue set_bandwidth2 = StringValue("100Mbps");
-    int set_rtt2 = 20;
+    StringValue set_bandwidth2 = StringValue("5Mbps");
+    int set_rtt2 = 3;
     int _switch = 0;
     bool pacing = true;
 

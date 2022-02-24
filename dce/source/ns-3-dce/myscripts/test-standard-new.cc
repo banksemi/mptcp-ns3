@@ -224,7 +224,9 @@ int main (int argc, char *argv[]) {
     dce.AddArgument ("-i");
     dce.AddArgument ("1.0");
     dce.AddArgument ("--time");
-    dce.AddArgument ("30");
+    dce.AddArgument ("32");
+    dce.AddArgument ("-l");
+    dce.AddArgument ("4K");
     dce.AddArgument ("--bandwidth");
     dce.AddArgument (bandwidth);
     //dce.AddArgument ("--json");
