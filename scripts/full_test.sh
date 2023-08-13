@@ -1,18 +1,15 @@
 ./_update.sh
 ./linux-build.sh
-
+./iperf3-build.sh
 
 rm ../logs/*.txt
+rm ../logs_receiver/*.txt
 
+rm ../*.pcap
 
-./dce-run.sh "test-standard --sched=default"
-cp ../../source/ns-3-dce/files-1/var/log/messages ../logs/default.txt
+mkdir ../../pcap/logs
+mkdir ../../pcap/logs_receiver
 
-./dce-run.sh "test-standard --sched=blest"
-cp ../../source/ns-3-dce/files-1/var/log/messages ../logs/blest.txt
-
-./dce-run.sh "test-standard --sched=redundant"
-cp ../../source/ns-3-dce/files-1/var/log/messages ../logs/redundant.txt
-
-./dce-run.sh "test-standard --sched=only_fast"
-cp ../../source/ns-3-dce/files-1/var/log/messages ../logs/only_fast.txt
+./dce-run.sh "test-standard --sched=only_fast --bandwidth=1Mbit"
+cp ../../source/ns-3-dce/files-0/var/log/messages ../../pcap/logs_receiver/RTT강제변경_only_fast.txt
+cp ../../source/ns-3-dce/files-1/var/log/messages ../../pcap/logs/RTT강제변경_only_fast.txt

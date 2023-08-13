@@ -165,6 +165,40 @@ static struct sock *get_slow_socket(struct mptcp_cb *mpcb) {
 	return NULL;
 }
 
+/* Function that returns the faster pass of established subflows */
+static struct sock *get_fast_socket(struct mptcp_cb *mpcb) {
+	struct sock *sk;
+
+	/* Initialization to find fast flow*/
+	struct sock *fastsk = NULL, *slowsk = NULL;
+	u32 fast_srtt = 0xffffffff, slow_srtt = 0;
+
+	mptcp_for_each_sk(mpcb, sk) {
+		struct tcp_sock *tp = tcp_sk(sk);
+		bool unused = false;
+
+		/* Find Fast Flow in selection flows */
+		if (!mptcp_is_def_unavailable(sk) && tp->srtt_us) {
+			if (fast_srtt > tp->srtt_us) {
+				fast_srtt = tp->srtt_us;
+				fastsk = sk;
+			}
+			if (slow_srtt < tp->srtt_us) {
+				slow_srtt = tp->srtt_us;
+				slowsk = sk;
+			}
+		}
+		
+		tcp_log(tp, "snd_ssthresh", tp->snd_ssthresh);
+		tcp_log(tp, "snd_cwnd", tp->snd_cwnd);
+	}
+	if (mpcb->cnt_established >= 2 && (fastsk && slowsk) && fastsk != slowsk)
+		return fastsk;
+	else
+		tcp_log(0, "slow_selection_error", 1);
+	return NULL;
+}
+
 static bool subflow_is_backup(const struct tcp_sock *tp)
 {
 	return tp->mptcp->rcv_low_prio || tp->mptcp->low_prio;
@@ -504,6 +538,12 @@ void check_ack(struct defsched_priv *dsp) {
 
 		if (!skb)
 			return;
+
+
+		struct sock *fastsk = get_fast_socket(mpcb);
+		struct tcp_sock *fasttp = tcp_sk(fastsk);
+
+
 		while (skb != NULL && skb != tcp_send_head(meta_sk)) {
 			tcp_log(0, "check2", TCP_SKB_CB(skb)->path_mask);
 			tcp_log(0, "check3", TCP_SKB_CB(skb)->custom_variable[4]);
@@ -514,11 +554,18 @@ void check_ack(struct defsched_priv *dsp) {
 					
 					u32 seq_rtt_us = skb_mstamp_us_delta(&now, &(skb->skb_mstamp));
 					u32 rtt_penalty = TCP_SKB_CB(skb)->custom_variable[2];
+					u32 rtt_penalty_fast = (fasttp->srtt_us >> 3) * 1; // 현재 Fast path의 RTT 값
 
 					tcp_log(activetp, "seq_rtt_us", seq_rtt_us);
 					tcp_log(activetp, "rtt_penalty", rtt_penalty);
-					if (seq_rtt_us < rtt_penalty)
-					{
+					tcp_log(activetp, "rtt_penalty_fast", rtt_penalty_fast);
+					 // 조건 추가: (activetp == slowtp && seq_rtt_us >= rtt_penalty_fast)
+					 // 해당 조건은 보낸 시점과 현재 시점에서 Fast Path가 변경되었으며, 현재 Fast Path RTT를 경과할때까지 ACK이 오지 않았음을 의미함
+					if (seq_rtt_us >= rtt_penalty || (seq_rtt_us >= rtt_penalty_fast)) {
+						reinject_start_check = true;
+						dsp->dont_use_until_ack = activetp->snd_una;
+
+					} else {
 						unsigned long expires = tcp_time_stamp + usecs_to_jiffies(backuptp->srtt_us >> 3) * 0.2;
 						struct timer_list *timer = dsp->fast_retransmission_timer;
 						if (!timer_pending(timer)) {
@@ -529,11 +576,6 @@ void check_ack(struct defsched_priv *dsp) {
 							add_timer(timer);
 						}
 						return;
-					}
-					else 
-					{
-						reinject_start_check = true;
-						dsp->dont_use_until_ack = activetp->snd_una;
 					}
 				}
 				/* Copy SKB */
@@ -636,6 +678,7 @@ static struct sk_buff *mptcp_next_segment(struct sock *meta_sk,
 			TCP_SKB_CB(skb)->custom_variable[0] = subtp;
 			TCP_SKB_CB(skb)->custom_variable[1] = slowtp;
 			TCP_SKB_CB(skb)->custom_variable[2] = (slowtp->srtt_us >> 3) * 2;
+			TCP_SKB_CB(skb)->custom_variable[3] = (subtp->srtt_us >> 3) * 1;
 			TCP_SKB_CB(skb)->custom_variable[4] = 0;
 			struct defsched_priv *dsp = defsched_get_priv(subtp);
 			dsp->activetp = subtp;

@@ -386,6 +386,8 @@ static struct sock *get_available_subflow(struct sock *meta_sk,
 
 			u32 avail_space = (slow_bytes < meta_tp->snd_wnd) ? (meta_tp->snd_wnd - slow_bytes) : 0;
 
+			tcp_log(mintp, "fast_bytes", fast_bytes);
+			tcp_log(mintp, "avail_space", avail_space);
 			if (fast_bytes > avail_space) {
 				// sending this SKB on the slow flow means
 				// we wouldn't be able to send all the data we'd like to send on the fast flow

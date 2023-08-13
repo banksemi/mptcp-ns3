@@ -1098,6 +1098,7 @@ next:
 		}
 	}
 
+	tcp_log(0, "receive_seq", meta_tp->rcv_nxt );
 	inet_csk(meta_sk)->icsk_ack.lrcvtime = tcp_time_stamp;
 	mptcp_reset_mapping(tp, old_copied_seq);
 

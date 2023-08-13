@@ -144,6 +144,8 @@ static __u16 tcp_advertise_mss(struct sock *sk)
 static void tcp_cwnd_restart(struct sock *sk, const struct dst_entry *dst)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
+
+	tcp_log(tp, "restart", 1);
 	s32 delta = tcp_time_stamp - tp->lsndtime;
 	u32 restart_cwnd = tcp_init_cwnd(tp, dst);
 	u32 cwnd = tp->snd_cwnd;
@@ -151,11 +153,19 @@ static void tcp_cwnd_restart(struct sock *sk, const struct dst_entry *dst)
 	tcp_ca_event(sk, CA_EVENT_CWND_RESTART);
 
 	tp->snd_ssthresh = tcp_current_ssthresh(sk);
-	restart_cwnd = min(restart_cwnd, cwnd);
 
+	tcp_log(tp, "restart_init_cwnd", restart_cwnd);
+	tcp_log(tp, "restart_first_cwnd", cwnd);
+	restart_cwnd = min(restart_cwnd, cwnd);
+	tcp_log(tp, "restart_restart_cwnd", restart_cwnd);
+
+	tcp_log(tp, "restart_delta", delta);
+	tcp_log(tp, "restart_icsk_rto", inet_csk(sk)->icsk_rto);
 	while ((delta -= inet_csk(sk)->icsk_rto) > 0 && cwnd > restart_cwnd)
 		cwnd >>= 1;
+	tcp_log(tp, "restart_cut_cwnd", cwnd);
 	tp->snd_cwnd = max(cwnd, restart_cwnd);
+	tcp_log(tp, "restart_result", tp->snd_cwnd);
 	tp->snd_cwnd_stamp = tcp_time_stamp;
 	tp->snd_cwnd_used = 0;
 }
@@ -1063,7 +1073,9 @@ int tcp_transmit_skb(struct sock *sk, struct sk_buff *skb, int clone_it,
 	err = icsk->icsk_af_ops->queue_xmit(sk, skb, &inet->cork.fl);
 
 	tcp_log(tp, "send", skb->len + tcp_header_size);
+	tcp_log(tp, "tcp_header_size", tcp_header_size);
 	tcp_log(tp, "cwnd", tp->snd_cwnd);
+	tcp_log(tp, "ssthresh", tp->snd_ssthresh);
 	if (likely(err <= 0))
 		return err;
 

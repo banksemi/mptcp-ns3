@@ -283,6 +283,7 @@ static struct sk_buff *mptcp_rcv_buf_optimization(struct sock *sk, int penal)
 				if (prior_cwnd >= tp_it->snd_ssthresh)
 					tp_it->snd_ssthresh = max(tp_it->snd_ssthresh >> 1U, 2U);
 
+				printk("retrans_cwnd");
 				dsp->last_rbuf_opti = tcp_time_stamp;
 			}
 			break;
@@ -312,7 +313,10 @@ retrans:
 		}
 
 		if (do_retrans && mptcp_is_available(sk, skb_head, false))
+		{
+			printk("retrans");
 			return skb_head;
+		}
 	}
 	return NULL;
 }

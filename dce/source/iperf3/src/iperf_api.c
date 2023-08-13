@@ -1039,7 +1039,7 @@ iperf_check_throttle(struct iperf_stream *sp, struct timeval *nowP)
         return;
     seconds = timeval_diff(&sp->result->start_time, nowP);
     // seconds = timeval_diff(&last_send_time, nowP);
-    double time_unit = 1;
+    double time_unit = 0.016;
     int max_time = 30;
     if (seconds > max_time) 
         seconds = max_time;

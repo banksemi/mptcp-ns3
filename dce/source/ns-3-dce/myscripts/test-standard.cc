@@ -216,10 +216,10 @@ int main (int argc, char *argv[]) {
     apps.Start (Seconds (1.5));
 
     StringValue set_bandwidth1 = StringValue("100Mbps");
-    int set_rtt1 = 4;
+    int set_rtt1 = 10;
 
     StringValue set_bandwidth2 = StringValue("100Mbps");
-    int set_rtt2 = 20;
+    int set_rtt2 = 100;
     int _switch = 0;
     bool pacing = true;
 

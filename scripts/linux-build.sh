@@ -9,7 +9,7 @@ make clean
 
 # /dce/source/net-next-nuse-4.4.0 -> /dce
 cd ../../
-bake.py build
+# bake.py build
 
 # /dce -> /dce/source/net-next-nuse-4.4.0
 cd ./source/net-next-nuse-4.4.0

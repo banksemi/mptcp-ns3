@@ -35,6 +35,10 @@
         "type_traits": "cpp",
         "utility": "cpp",
         "typeinfo": "cpp",
-        "algorithm": "cpp"
+        "algorithm": "cpp",
+        "random": "c",
+        "string": "cpp",
+        "complex": "cpp",
+        "list": "cpp"
     }
 }

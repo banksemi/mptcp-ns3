@@ -10,7 +10,7 @@ rm ./pcap/messages
 cd ./source/ns-3-dce
 
 if [ $# -ne 1 ]; then
-    ./waf --run mmwave --command-template="gdb %s"
+    ./waf --run test-standard --command-template="gdb %s"
 else
     ./waf --run "$@"
 fi
