@@ -216,30 +216,30 @@ int main (int argc, char *argv[]) {
     apps.Start (Seconds (1.5));
 
     StringValue set_bandwidth1 = StringValue("100Mbps");
-    int set_rtt1 = 4;
+    int set_delay1 = 4;
 
     StringValue set_bandwidth2 = StringValue("100Mbps");
-    int set_rtt2 = 20;
+    int set_delay2 = 20;
     int _switch = 0;
     bool pacing = true;
 
-    Simulator::Schedule(Seconds(1), &ChangeRTT, (_switch) % 2 , set_bandwidth1, StringValue(std::to_string(set_rtt1) + "ms")); // start UE movement
-    Simulator::Schedule(Seconds(1), &ChangeRTT, (_switch + 1) % 2, set_bandwidth2, StringValue(std::to_string(set_rtt2) + "ms")); // start UE movement
+    Simulator::Schedule(Seconds(1), &ChangeRTT, (_switch) % 2 , set_bandwidth1, StringValue(std::to_string(set_delay1) + "ms")); // start UE movement
+    Simulator::Schedule(Seconds(1), &ChangeRTT, (_switch + 1) % 2, set_bandwidth2, StringValue(std::to_string(set_delay2) + "ms")); // start UE movement
     _switch++;
 
     if (rtt_change) {
         for(int i = 7; i<32; i += 5) {
             if (pacing == false) {
-                Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch) % 2, set_bandwidth1, StringValue(std::to_string(set_rtt1) + "ms")); // start UE movement
-                Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch + 1) % 2, set_bandwidth2, StringValue(std::to_string(set_rtt2) + "ms")); // start UE movement
+                Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch) % 2, set_bandwidth1, StringValue(std::to_string(set_delay1) + "ms")); // start UE movement
+                Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch + 1) % 2, set_bandwidth2, StringValue(std::to_string(set_delay2) + "ms")); // start UE movement
             } else {
                 int t = i * 1000;
-                for (int x = t - set_rtt1; x <= t; x++) {
-                    StringValue delay_ms = StringValue(to_string_with_precision<float>(Delay(t, set_rtt1, set_rtt2, x)) + "ms");
+                for (int x = t - set_delay1; x <= t; x++) {
+                    StringValue delay_ms = StringValue(to_string_with_precision<float>(Delay(t, set_delay1, set_delay2, x)) + "ms");
                     Simulator::Schedule (Seconds (x / 1000.0), &ChangeRTT, (_switch + 1) % 2, set_bandwidth2, delay_ms); // start UE movement
                 }
-                for (int x = t - set_rtt2; x <= t; x++) {
-                    StringValue delay_ms = StringValue(to_string_with_precision<float>(Delay(t, set_rtt2, set_rtt1, x)) + "ms");
+                for (int x = t - set_delay2; x <= t; x++) {
+                    StringValue delay_ms = StringValue(to_string_with_precision<float>(Delay(t, set_delay2, set_delay1, x)) + "ms");
                     Simulator::Schedule (Seconds (x / 1000.0), &ChangeRTT, (_switch) % 2, set_bandwidth1, delay_ms); // start UE movement
                 }
             }
