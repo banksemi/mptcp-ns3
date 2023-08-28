@@ -18,3 +18,10 @@ make library ARCH=lib
 rm liblinux.so
 ln -s ./arch/lib/tools/libsim-linux.so ./liblinux.so
 
+# /dce/source/net-next-nuse-4.4.0 -> /dce
+cd ../../
+
+# /dce -> /dce/source/iperf3
+cd ./source/iperf3
+make clean
+make

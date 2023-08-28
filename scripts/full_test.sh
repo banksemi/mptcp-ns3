@@ -1,6 +1,5 @@
 ./_update.sh
 ./linux-build.sh
-./iperf3-build.sh
 
 rm ../logs/*.txt
 rm ../logs_receiver/*.txt
