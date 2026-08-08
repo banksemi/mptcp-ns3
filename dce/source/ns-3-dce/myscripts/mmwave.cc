@@ -98,6 +98,7 @@ int main(int argc, char *argv[])
 	std::string congestionControl = "cubic";
 	uint32_t trafficDuration = 12;
 	double simulationStop = 15.0;
+	uint32_t guardLatencyUs = 0;
     
     LogComponentEnable("DceMptcpMmWave", LOG_LEVEL_ALL);
     //LogComponentEnable ("MmWave3gppChannel", LOG_LEVEL_DEBUG);
@@ -112,11 +113,13 @@ int main(int argc, char *argv[])
 	cmd.AddValue ("congestionControl", "TCP congestion control: reno, cubic, lia, or balia", congestionControl);
 	cmd.AddValue ("trafficDuration", "iperf traffic duration in seconds", trafficDuration);
 	cmd.AddValue ("simulationStop", "simulation stop time in seconds", simulationStop);
+	cmd.AddValue ("guardLatencyUs", "only_fast guard latency in microseconds", guardLatencyUs);
     cmd.Parse(argc, argv);
 
     NS_LOG_UNCOND ("sched " << sched);
     NS_LOG_UNCOND ("bandwidth " << bandwidth);
 	NS_LOG_UNCOND ("congestionControl " << congestionControl);
+	NS_LOG_UNCOND ("guardLatencyUs " << guardLatencyUs);
 
     std::string bufSize = "1073700000";
     //  std::string bufSize = "1073700000";
@@ -533,6 +536,7 @@ int main(int argc, char *argv[])
     }
 
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_enabled", "1");
+	stack.SysctlSet(nodes, ".net.mptcp.mptcp_only_fast_guard_us", std::to_string(guardLatencyUs));
 
     // set
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_debug", "0");

@@ -67,6 +67,11 @@ int sysctl_mptcp_checksum __read_mostly = 1;
 int sysctl_mptcp_debug __read_mostly;
 EXPORT_SYMBOL(sysctl_mptcp_debug);
 int sysctl_mptcp_syn_retries __read_mostly = 3;
+int sysctl_mptcp_only_fast_guard_us __read_mostly;
+EXPORT_SYMBOL(sysctl_mptcp_only_fast_guard_us);
+
+static int mptcp_only_fast_guard_min;
+static int mptcp_only_fast_guard_max = 1000000;
 
 bool mptcp_init_failed __read_mostly;
 
@@ -139,6 +144,15 @@ static struct ctl_table mptcp_table[] = {
 		.maxlen = sizeof(int),
 		.mode = 0644,
 		.proc_handler = &proc_dointvec
+	},
+	{
+		.procname = "mptcp_only_fast_guard_us",
+		.data = &sysctl_mptcp_only_fast_guard_us,
+		.maxlen = sizeof(int),
+		.mode = 0644,
+		.proc_handler = &proc_dointvec_minmax,
+		.extra1 = &mptcp_only_fast_guard_min,
+		.extra2 = &mptcp_only_fast_guard_max
 	},
 	{
 		.procname	= "mptcp_path_manager",

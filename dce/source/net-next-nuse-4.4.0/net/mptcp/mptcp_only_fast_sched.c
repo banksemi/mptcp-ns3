@@ -20,6 +20,7 @@ struct defsched_priv {
 	struct tcp_sock *backuptp;
 
 	u32 dont_use_until_ack;
+	u8 target_path_index;
 };
 
 static struct defsched_priv *defsched_get_priv(const struct tcp_sock *tp)
@@ -175,6 +176,130 @@ static bool subflow_is_active(const struct tcp_sock *tp)
 	return !tp->mptcp->rcv_low_prio && !tp->mptcp->low_prio;
 }
 
+static struct defsched_priv *defsched_get_conn_priv(struct mptcp_cb *mpcb)
+{
+	if (!mpcb->master_sk)
+		return NULL;
+
+	return defsched_get_priv(tcp_sk(mpcb->master_sk));
+}
+
+static bool only_fast_path_blocked(const struct tcp_sock *tp)
+{
+	const struct defsched_priv *dsp = defsched_get_priv(tp);
+
+	return dsp->dont_use_until_ack &&
+	       tp->snd_una == dsp->dont_use_until_ack;
+}
+
+static struct sock *only_fast_find_path(struct mptcp_cb *mpcb, u8 path_index)
+{
+	struct sock *sk;
+
+	if (!path_index)
+		return NULL;
+
+	mptcp_for_each_sk(mpcb, sk) {
+		if (tcp_sk(sk)->mptcp->path_index == path_index)
+			return sk;
+	}
+
+	return NULL;
+}
+
+static struct sock *only_fast_lowest_rtt(struct mptcp_cb *mpcb,
+					 bool (*selector)(const struct tcp_sock *))
+{
+	struct sock *bestsk = NULL;
+	struct sock *sk;
+
+	mptcp_for_each_sk(mpcb, sk) {
+		struct tcp_sock *tp = tcp_sk(sk);
+		struct tcp_sock *besttp;
+
+		if (!(*selector)(tp) || mptcp_is_def_unavailable(sk) ||
+		    only_fast_path_blocked(tp))
+			continue;
+
+		if (!bestsk) {
+			bestsk = sk;
+			continue;
+		}
+
+		besttp = tcp_sk(bestsk);
+		if ((!besttp->srtt_us && tp->srtt_us) ||
+		    (besttp->srtt_us && tp->srtt_us &&
+		     tp->srtt_us < besttp->srtt_us))
+			bestsk = sk;
+	}
+
+	return bestsk;
+}
+
+/* Select a persistent target only for never-sent MPTCP data.  Temporary
+ * target congestion does not cause a path switch; the caller waits for an
+ * ACK to reopen that target's sending window, as LowPF requires.
+ */
+static struct sock *only_fast_get_target(struct mptcp_cb *mpcb,
+					 struct sk_buff *skb,
+					 bool zero_wnd_test)
+{
+	struct defsched_priv *conn_dsp = defsched_get_conn_priv(mpcb);
+	struct sock *candidate;
+	struct sock *target;
+	struct sock *old_target;
+	u32 switch_reason = 0;
+	u64 guard_srtt;
+
+	candidate = only_fast_lowest_rtt(mpcb, &subflow_is_active);
+	if (!candidate)
+		candidate = only_fast_lowest_rtt(mpcb, &subflow_is_backup);
+	if (!candidate)
+		return NULL;
+
+	target = conn_dsp ?
+		only_fast_find_path(mpcb, conn_dsp->target_path_index) : NULL;
+	old_target = target;
+
+	if (!target || mptcp_is_def_unavailable(target) ||
+	    only_fast_path_blocked(tcp_sk(target)) ||
+	    (subflow_is_active(tcp_sk(candidate)) &&
+	     !subflow_is_active(tcp_sk(target)))) {
+		target = candidate;
+		switch_reason = old_target ? 3 : 1;
+	} else if (target != candidate) {
+		guard_srtt = (u64)sysctl_mptcp_only_fast_guard_us << 3;
+		if ((!tcp_sk(target)->srtt_us && tcp_sk(candidate)->srtt_us) ||
+		    (tcp_sk(target)->srtt_us && tcp_sk(candidate)->srtt_us &&
+		     (u64)tcp_sk(candidate)->srtt_us + guard_srtt <
+		     (u64)tcp_sk(target)->srtt_us)) {
+			target = candidate;
+			switch_reason = 2;
+		}
+	}
+
+	if (conn_dsp && conn_dsp->target_path_index !=
+					 tcp_sk(target)->mptcp->path_index) {
+		conn_dsp->target_path_index = tcp_sk(target)->mptcp->path_index;
+		tcp_log(tcp_sk(target), "target_switch", switch_reason);
+		tcp_log(tcp_sk(target), "target_path",
+			tcp_sk(target)->mptcp->path_index);
+		tcp_log(tcp_sk(target), "target_srtt_us",
+			tcp_sk(target)->srtt_us >> 3);
+		tcp_log(tcp_sk(target), "guard_latency_us",
+			sysctl_mptcp_only_fast_guard_us);
+		if (old_target)
+			tcp_log(tcp_sk(old_target), "old_target_srtt_us",
+				tcp_sk(old_target)->srtt_us >> 3);
+	}
+
+	if (only_fast_path_blocked(tcp_sk(target)) ||
+	    mptcp_is_temp_unavailable(target, skb, zero_wnd_test))
+		return NULL;
+
+	return target;
+}
+
 /* Generic function to iterate over used and unused subflows and to select the
  * best one
  */
@@ -262,10 +387,6 @@ static struct sock
 			*force = false;
 	}
 	
-	if (skb && TCP_SKB_CB(skb)->path_mask == 0 && bestsk == get_slow_socket(mpcb)) {
-		return NULL;
-	}
-	
 	return bestsk;
 }
 
@@ -301,6 +422,9 @@ static struct sock *get_available_subflow(struct sock *meta_sk,
 				return sk;
 		}
 	}
+
+	if (skb && TCP_SKB_CB(skb)->path_mask == 0)
+		return only_fast_get_target(mpcb, skb, zero_wnd_test);
 
 	/* Find the best subflow */
 	sk = get_subflow_from_selectors(mpcb, skb, &subflow_is_active,
@@ -696,6 +820,7 @@ static void defsched_init(struct sock *sk)
 
 	dsp->last_rbuf_opti = tcp_time_stamp; 
 	dsp->dont_use_until_ack = 0;
+	dsp->target_path_index = 0;
 	dsp->timer_malloc = 1;
 	printk("fast_timer1");
 	dsp->fast_retransmission_timer = (struct timer_list*)kmalloc(sizeof(struct timer_list), GFP_KERNEL);

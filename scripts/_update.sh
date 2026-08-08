@@ -9,3 +9,5 @@ CodeCopy "iperf3"
 CodeCopy "ns-3.28/src/mmwave/model"
 CodeCopy "net-next-nuse-4.4.0/net"
 CodeCopy "ns-3-dce/myscripts"
+cp ../dce/source/net-next-nuse-4.4.0/include/net/mptcp.h \
+	../../source/net-next-nuse-4.4.0/include/net/mptcp.h

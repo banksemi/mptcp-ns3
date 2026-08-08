@@ -92,6 +92,7 @@ int main (int argc, char *argv[]) {
     std::string congestionControl = "cubic";
 	uint32_t trafficDuration = 32;
 	double simulationStop = 100.0;
+	uint32_t guardLatencyUs = 0;
 
     cmd.AddValue ("sched", "sched value", sched);
     cmd.AddValue ("rtt_change", "rtt_change value", rtt_change);
@@ -99,11 +100,13 @@ int main (int argc, char *argv[]) {
     cmd.AddValue ("congestionControl", "TCP congestion control: reno, cubic, lia, or balia", congestionControl);
 	cmd.AddValue ("trafficDuration", "iperf traffic duration in seconds", trafficDuration);
 	cmd.AddValue ("simulationStop", "simulation stop time in seconds", simulationStop);
+	cmd.AddValue ("guardLatencyUs", "only_fast guard latency in microseconds", guardLatencyUs);
     cmd.Parse (argc, argv);
 
     NS_LOG_UNCOND ("sched " << sched);
     NS_LOG_UNCOND ("bandwidth " << bandwidth);
     NS_LOG_UNCOND ("congestionControl " << congestionControl);
+	NS_LOG_UNCOND ("guardLatencyUs " << guardLatencyUs);
     
     NodeContainer nodes, routers;
     nodes.Create (2);
@@ -181,6 +184,7 @@ int main (int argc, char *argv[]) {
 
 
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_enabled", "1");
+	stack.SysctlSet(nodes, ".net.mptcp.mptcp_only_fast_guard_us", std::to_string (guardLatencyUs));
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_scheduler", sched);
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_checksum", "1");
     stack.SysctlSet(nodes, ".net.ipv4.tcp_congestion_control", congestionControl);
