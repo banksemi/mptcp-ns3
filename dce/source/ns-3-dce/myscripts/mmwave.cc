@@ -84,9 +84,6 @@ static ns3::GlobalValue g_dist("dist", "Distance from eNB",
 static ns3::GlobalValue g_outPath("outPath",
                                   "The path of output log files",
                                   ns3::StringValue("./"), ns3::MakeStringChecker());
-static ns3::GlobalValue g_congestionControl("congestionControl",
-                                            "CC algorithm",
-                                            ns3::StringValue("cubic"), ns3::MakeStringChecker());
 static ns3::GlobalValue g_rlcAmEnabled("rlcAmEnabled", "If true, use RLC AM, else use RLC UM",
                                        ns3::BooleanValue(true), ns3::MakeBooleanChecker());
 static ns3::GlobalValue g_harqEnabled("harqEnabled",
@@ -98,6 +95,9 @@ int main(int argc, char *argv[])
 
     std::string sched = "only_fast";
     std::string bandwidth = "0";
+	std::string congestionControl = "cubic";
+	uint32_t trafficDuration = 12;
+	double simulationStop = 15.0;
     
     LogComponentEnable("DceMptcpMmWave", LOG_LEVEL_ALL);
     //LogComponentEnable ("MmWave3gppChannel", LOG_LEVEL_DEBUG);
@@ -109,14 +109,17 @@ int main(int argc, char *argv[])
 
     cmd.AddValue ("sched", "sched value", sched);
     cmd.AddValue ("bandwidth", "bandwidth value", bandwidth);
+	cmd.AddValue ("congestionControl", "TCP congestion control: reno, cubic, lia, or balia", congestionControl);
+	cmd.AddValue ("trafficDuration", "iperf traffic duration in seconds", trafficDuration);
+	cmd.AddValue ("simulationStop", "simulation stop time in seconds", simulationStop);
     cmd.Parse(argc, argv);
 
     NS_LOG_UNCOND ("sched " << sched);
     NS_LOG_UNCOND ("bandwidth " << bandwidth);
+	NS_LOG_UNCOND ("congestionControl " << congestionControl);
 
     std::string bufSize = "1073700000";
     //  std::string bufSize = "1073700000";
-    double stopTime = 15.0;
     std::string p2pdelay = "0ms";
 
     bool disLte = true;
@@ -158,8 +161,7 @@ int main(int argc, char *argv[])
     std::string time_str(buffer);
 
     // Congestion Control algorithm
-    GlobalValue::GetValueByName("congestionControl", stringValue);
-    std::string ccAlg = stringValue.Get();
+	std::string ccAlg = congestionControl;
 
     // mmWave config
     GlobalValue::GetValueByName("harqEnabled", booleanValue);
@@ -609,7 +611,7 @@ int main(int argc, char *argv[])
         dce.AddArgument("-i");
         dce.AddArgument("1.0");
         dce.AddArgument("--time");
-        dce.AddArgument("12");
+		dce.AddArgument(std::to_string(trafficDuration));
         dce.AddArgument ("-l");
         dce.AddArgument ("4K");
         dce.AddArgument ("--bandwidth");
@@ -657,7 +659,7 @@ int main(int argc, char *argv[])
     outputConfig2.ConfigureAttributes();
 
     pointToPoint.EnablePcapAll("../../pcap/" + sched);
-    Simulator::Stop(Seconds(stopTime));
+	Simulator::Stop(Seconds(simulationStop));
     Simulator::Run();
     Simulator::Destroy();
 

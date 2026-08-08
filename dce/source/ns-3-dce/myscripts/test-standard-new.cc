@@ -115,13 +115,20 @@ int main (int argc, char *argv[]) {
     uint32_t ntraffic_nodes = 4;
     CommandLine cmd;
     std::string bandwidth = "1Mbit";
+	std::string congestionControl = "cubic";
+	uint32_t trafficDuration = 32;
+	double simulationStop = 100.0;
 
     cmd.AddValue ("sched", "sched value", sched);
     cmd.AddValue ("bandwidth", "bandwidth value", bandwidth);
+	cmd.AddValue ("congestionControl", "TCP congestion control: reno, cubic, lia, or balia", congestionControl);
+	cmd.AddValue ("trafficDuration", "iperf traffic duration in seconds", trafficDuration);
+	cmd.AddValue ("simulationStop", "simulation stop time in seconds", simulationStop);
     cmd.Parse (argc, argv);
 
     NS_LOG_UNCOND ("sched " << sched);
     NS_LOG_UNCOND ("bandwidth " << bandwidth);
+	NS_LOG_UNCOND ("congestionControl " << congestionControl);
     
     NodeContainer nodes, routers, traffic_nodes;
     nodes.Create (2);
@@ -209,6 +216,7 @@ int main (int argc, char *argv[]) {
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_enabled", "1");
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_scheduler", sched);
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_checksum", "1");
+	stack.SysctlSet(nodes, ".net.ipv4.tcp_congestion_control", congestionControl);
 
 
     DceApplicationHelper dce;
@@ -224,7 +232,7 @@ int main (int argc, char *argv[]) {
     dce.AddArgument ("-i");
     dce.AddArgument ("1.0");
     dce.AddArgument ("--time");
-    dce.AddArgument ("32");
+	dce.AddArgument (std::to_string (trafficDuration));
     dce.AddArgument ("-l");
     dce.AddArgument ("4K");
     dce.AddArgument ("--bandwidth");
@@ -285,12 +293,10 @@ int main (int argc, char *argv[]) {
     }
     
 
-    Simulator::Stop (Seconds (100));
+	Simulator::Stop (Seconds (simulationStop));
     Simulator::Run ();
     Simulator::Destroy ();
 
   return 0;
 }
-
-
 
