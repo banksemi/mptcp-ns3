@@ -113,6 +113,7 @@ void AddRouteForRouter(int i, Ptr<Node> router, Ipv4InterfaceContainer if1, int 
 int main (int argc, char *argv[]) {
     LogComponentEnable ("DceMptcpTest", LOG_LEVEL_ALL);
     uint32_t ntraffic_nodes = 4;
+    uint32_t pathCount = 2;
     CommandLine cmd;
     std::string bandwidth = "1Mbit";
 	std::string congestionControl = "cubic";
@@ -126,16 +127,22 @@ int main (int argc, char *argv[]) {
 	cmd.AddValue ("trafficDuration", "iperf traffic duration in seconds", trafficDuration);
 	cmd.AddValue ("simulationStop", "simulation stop time in seconds", simulationStop);
 	cmd.AddValue ("guardLatencyUs", "only_fast guard latency in microseconds", guardLatencyUs);
+    cmd.AddValue ("pathCount", "number of physical MPTCP paths: 2 or 3", pathCount);
     cmd.Parse (argc, argv);
 
+    if (pathCount != 2 && pathCount != 3) {
+        NS_LOG_UNCOND ("pathCount must be 2 or 3");
+        return 2;
+    }
     NS_LOG_UNCOND ("sched " << sched);
     NS_LOG_UNCOND ("bandwidth " << bandwidth);
 	NS_LOG_UNCOND ("congestionControl " << congestionControl);
 	NS_LOG_UNCOND ("guardLatencyUs " << guardLatencyUs);
+    NS_LOG_UNCOND ("pathCount " << pathCount);
     
     NodeContainer nodes, routers, traffic_nodes;
     nodes.Create (2);
-    routers.Create (3);
+    routers.Create (pathCount + 1);
     traffic_nodes.Create (ntraffic_nodes * 2);
 
     DceManagerHelper dceManager;
@@ -182,15 +189,31 @@ int main (int argc, char *argv[]) {
     AddRouteForNode(1, nodes.Get(1), ipinterface, 0, address_base[3], true);
     AddRouteForRouter(1, routers.Get(1),ipinterface, 1, address_base[3]);
 
-    ipinterface = InstallDevice("100Mbps", "4ms", address[4], nodes.Get (0), routers.Get (2));
+    const char *set_bandwidth2 = "100Mbps";
+    const char *set_delay2 = "4ms";
+
+    ipinterface = InstallDevice(set_bandwidth2, set_delay2, address[4], nodes.Get (0), routers.Get (2));
     AddRouteForNode(0, nodes.Get(0), ipinterface, 0, address_base[4]);
     AddRouteForRouter(2, routers.Get(2),ipinterface, 1, address_base[4]);
 
-    ipinterface = InstallDevice("100Mbps", "4ms", address[5], nodes.Get (1), routers.Get (2));
+    ipinterface = InstallDevice(set_bandwidth2, set_delay2, address[5], nodes.Get (1), routers.Get (2));
     AddRouteForNode(1, nodes.Get(1), ipinterface, 0, address_base[5]);
     AddRouteForRouter(2, routers.Get(2),ipinterface, 1, address_base[5]);
 
-    int default_address_no = 6;
+    if (pathCount == 3) {
+        const char *set_bandwidth3 = "100Mbps";
+        const char *set_delay3 = "4ms";
+
+        ipinterface = InstallDevice(set_bandwidth3, set_delay3, address[6], nodes.Get (0), routers.Get (3));
+        AddRouteForNode(0, nodes.Get(0), ipinterface, 0, address_base[6]);
+        AddRouteForRouter(3, routers.Get(3),ipinterface, 1, address_base[6]);
+
+        ipinterface = InstallDevice(set_bandwidth3, set_delay3, address[7], nodes.Get (1), routers.Get (3));
+        AddRouteForNode(1, nodes.Get(1), ipinterface, 0, address_base[7]);
+        AddRouteForRouter(3, routers.Get(3),ipinterface, 1, address_base[7]);
+    }
+
+    int default_address_no = pathCount == 3 ? 8 : 6;
     for (int i = 0; i < ntraffic_nodes; i ++) {
         ipinterface = InstallDevice("100Mbps", "1ms", address[default_address_no + i * 2], traffic_nodes.Get (i * 2), routers.Get (0));
         AddRouteForNode(default_address_no + i * 2, traffic_nodes.Get(i * 2), ipinterface, 0, address_base[default_address_no + i * 2], true);

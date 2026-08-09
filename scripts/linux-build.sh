@@ -9,13 +9,18 @@ make clean
 
 # /dce/source/net-next-nuse-4.4.0 -> /dce
 cd ../../
-bake.py build
+if ! bake.py build; then
+    echo "bake.py build failed; continuing with the authoritative kernel library build" >&2
+fi
 
 # /dce -> /dce/source/net-next-nuse-4.4.0
 cd ./source/net-next-nuse-4.4.0
-make library ARCH=lib
+if ! make library ARCH=lib; then
+    echo "Kernel library build failed" >&2
+    exit 1
+fi
 
-rm liblinux.so
+rm -f liblinux.so
 ln -s ./arch/lib/tools/libsim-linux.so ./liblinux.so
 
 # /dce/source/net-next-nuse-4.4.0 -> /dce
@@ -24,4 +29,7 @@ cd ../../
 # /dce -> /dce/source/iperf3
 cd ./source/iperf3
 make clean
-make
+if ! make; then
+    echo "iperf3 build failed" >&2
+    exit 1
+fi

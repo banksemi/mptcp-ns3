@@ -387,6 +387,17 @@ static struct sock
 			*force = false;
 	}
 
+	if (skb && TCP_SKB_CB(skb)->path_mask == 0 && bestsk &&
+	    bestsk == get_slow_socket(mpcb)) {
+		struct tcp_sock *tp_it;
+
+		mptcp_for_each_tp(mpcb, tp_it) {
+			if (tcp_sk(bestsk) != tp_it &&
+			    defsched_get_priv(tp_it)->retransmission_count == 0)
+				return NULL;
+		}
+	}
+
 	return bestsk;
 }
 
@@ -567,7 +578,7 @@ begin:
 
 			if (TCP_SKB_CB(skb)->path_mask == 0 ||
 				TCP_SKB_CB(skb)->path_mask &
-				mptcp_pi_to_flag(tp->mptcp->path_index)) { 
+				mptcp_pi_to_flag(tp->mptcp->path_index)) {
 				tcp_log(tp, "probe_reset_two", 1);
 				/* The specified path cannot be used. */
 				skb_unlink(skb, &mpcb->reinject_queue);
@@ -630,7 +641,8 @@ void check_ack(struct defsched_priv *dsp) {
 
 		if (!skb)
 			return;
-		if (activetp->mptcp->path_index == 2)
+		if (activetp->mptcp->loc_id !=
+		    sysctl_mptcp_only_fast_mmwave_loc_id)
 			continue;
 
 		while (skb != NULL && skb != tcp_send_head(meta_sk)) {
@@ -741,73 +753,79 @@ static struct sk_buff *mptcp_next_segment(struct sock *meta_sk,
 	struct mptcp_cb *mpcb = meta_tp->mpcb;
 	struct sock *slowsk = get_slow_socket(mpcb);
 	
-	struct tcp_sock *backuptp = NULL;
 	struct tcp_sock *tp_it;
 	int index_i = 1;
 	mptcp_for_each_tp(mpcb, tp_it) {
 		tcp_log(tp_it, "index", index_i++);
-		if (subtp != tp_it)
-			backuptp = tp_it;
 	}
 	if (slowsk != NULL) {
 		struct tcp_sock *slowtp = tcp_sk(slowsk);
+		struct tcp_sock *backuptp;
 
-		/* If there are no packets in flight on the slow path, and the packet to be sent now is not an injected packet */
-		if (TCP_SKB_CB(skb)->path_mask == 0) {
-			if (defsched_get_priv(backuptp)->retransmission_count > 0 && subtp != slowtp && defsched_get_priv(backuptp)->retransmission_switch)
-			{
+		mptcp_for_each_tp(mpcb, backuptp) {
+			if (subtp == backuptp)
+				continue;
+
+			/* If there are no packets in flight on the other path, and the packet to be sent now is not an injected packet */
+			if (TCP_SKB_CB(skb)->path_mask == 0) {
+				if (defsched_get_priv(backuptp)->retransmission_count > 0 &&
+				    subtp != slowtp && backuptp == slowtp &&
+				    defsched_get_priv(backuptp)->retransmission_switch)
+				{
 					defsched_get_priv(backuptp)->retransmission_count = defsched_get_priv(backuptp)->retransmission_count_org;
 					defsched_get_priv(backuptp)->retransmission_switch = false;
-			}
+				}
 
-			if (tcp_packets_in_flight(backuptp) < 1) {
-				struct mptcp_cb *mpcb = meta_tp->mpcb;
-				/* Copy SKB */
-				for(int i = 0; i < 2; i++) {
-					struct sk_buff *copy_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
-					if (likely(copy_skb)) { /* SKB isn't NULL */
-						copy_skb->sk = meta_sk;
-						if (!after(TCP_SKB_CB(copy_skb)->end_seq, meta_tp->snd_una)) {
-							tcp_log(backuptp, "probe_reset_three", 1);
-							__kfree_skb(copy_skb);
-						} else {
-							// memset(TCP_SKB_CB(copy_skb)->dss, 0 , mptcp_dss_len);
-							TCP_SKB_CB(copy_skb)->path_mask = mptcp_pi_to_flag(backuptp->mptcp->path_index);
-							TCP_SKB_CB(copy_skb)->path_mask ^= -1u;
-							TCP_SKB_CB(copy_skb)->custom_variable[4] = 1;
-							skb_queue_tail(&mpcb->reinject_queue, copy_skb);
-							tcp_log(backuptp, "probe", 1);
+				if (tcp_packets_in_flight(backuptp) < 1) {
+					struct mptcp_cb *mpcb = meta_tp->mpcb;
+					/* Copy SKB */
+					for(int i = 0; i < 2; i++) {
+						struct sk_buff *copy_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
+						if (likely(copy_skb)) { /* SKB isn't NULL */
+							copy_skb->sk = meta_sk;
+							if (!after(TCP_SKB_CB(copy_skb)->end_seq, meta_tp->snd_una)) {
+								tcp_log(backuptp, "probe_reset_three", 1);
+								__kfree_skb(copy_skb);
+							} else {
+								// memset(TCP_SKB_CB(copy_skb)->dss, 0 , mptcp_dss_len);
+								TCP_SKB_CB(copy_skb)->path_mask = mptcp_pi_to_flag(backuptp->mptcp->path_index);
+								TCP_SKB_CB(copy_skb)->path_mask ^= -1u;
+								TCP_SKB_CB(copy_skb)->custom_variable[4] = 1;
+								skb_queue_tail(&mpcb->reinject_queue, copy_skb);
+								tcp_log(backuptp, "probe", 1);
+							}
 						}
 					}
-				}
-			} else if (defsched_get_priv(backuptp)->retransmission_count > 0 && subtp == slowtp){ // ºü¸¥ ÆÐ½º (ÆÐ³ÎÆ¼) ´À¸° ÆÐ½º(ÆÐ³ÎÆ¼ ¾øÀ½)
-				struct mptcp_cb *mpcb = meta_tp->mpcb;
-				if (mptcp_is_available(slowsk, skb, false)) {
-					struct sk_buff *copy_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
-					if (likely(copy_skb)) { /* SKB isn't NULL */
-						copy_skb->sk = meta_sk;
-						if (!after(TCP_SKB_CB(copy_skb)->end_seq, meta_tp->snd_una)) {
-							__kfree_skb(copy_skb);
-						} else {
-							defsched_get_priv(backuptp)->retransmission_count -= 1;
-							defsched_get_priv(backuptp)->retransmission_switch = true;
-							tcp_log(backuptp, "retransmission_count", defsched_get_priv(backuptp)->retransmission_count);
-							// memset(TCP_SKB_CB(copy_skb)->dss, 0 , mptcp_dss_len);
-							TCP_SKB_CB(copy_skb)->path_mask = mptcp_pi_to_flag(backuptp->mptcp->path_index);
-							TCP_SKB_CB(copy_skb)->path_mask ^= -1u;
-							TCP_SKB_CB(copy_skb)->custom_variable[4] = 1;
-							skb_queue_tail(&mpcb->reinject_queue, copy_skb);
+				} else if (defsched_get_priv(backuptp)->retransmission_count > 0 &&
+					   (subtp == slowtp || backuptp != slowtp)){ // ë¹ ë¥¸ íŒ¨ìŠ¤ (íŒ¨ë„í‹°) ëŠë¦° íŒ¨ìŠ¤(íŒ¨ë„í‹° ì—†ìŒ)
+					struct mptcp_cb *mpcb = meta_tp->mpcb;
+					if (mptcp_is_available(slowsk, skb, false)) {
+						struct sk_buff *copy_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
+						if (likely(copy_skb)) { /* SKB isn't NULL */
+							copy_skb->sk = meta_sk;
+							if (!after(TCP_SKB_CB(copy_skb)->end_seq, meta_tp->snd_una)) {
+								__kfree_skb(copy_skb);
+							} else {
+								defsched_get_priv(backuptp)->retransmission_count -= 1;
+								defsched_get_priv(backuptp)->retransmission_switch = true;
+								tcp_log(backuptp, "retransmission_count", defsched_get_priv(backuptp)->retransmission_count);
+								// memset(TCP_SKB_CB(copy_skb)->dss, 0 , mptcp_dss_len);
+								TCP_SKB_CB(copy_skb)->path_mask = mptcp_pi_to_flag(backuptp->mptcp->path_index);
+								TCP_SKB_CB(copy_skb)->path_mask ^= -1u;
+								TCP_SKB_CB(copy_skb)->custom_variable[4] = 1;
+								skb_queue_tail(&mpcb->reinject_queue, copy_skb);
+							}
 						}
 					}
 				}
 			}
+			if (defsched_get_priv(backuptp)->retransmission_switch)
+				tcp_log(0, "switch", 1);
+			else
+				tcp_log(0, "switch", 0);
+
+			tcp_log(backuptp, "retransmission_count", defsched_get_priv(backuptp)->retransmission_count);
 		}
-		if (defsched_get_priv(backuptp)->retransmission_switch) 
-			tcp_log(0, "switch", 1);
-		else
-			tcp_log(0, "switch", 0);
-			
-		tcp_log(backuptp, "retransmission_count", defsched_get_priv(backuptp)->retransmission_count);
 		if (subsk != slowsk && TCP_SKB_CB(skb)->path_mask == 0) {
 			
 			tcp_log(0, "time", tcp_time_stamp);

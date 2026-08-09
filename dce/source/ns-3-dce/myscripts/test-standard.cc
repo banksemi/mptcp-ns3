@@ -34,21 +34,27 @@ void PrintPid (ApplicationContainer apps, DceApplicationHelper dce) {
     NS_LOG_UNCOND ("PID " << dce.GetPid (PeekPointer (apps.Get (0))));
 }
 void ChangeRTT(int device, StringValue BandRate, StringValue RTT) {
-    // /NodeList/0/DeviceList/0/: 노드0 ->*path1* -> 라우터 -> ... -> 노드1
-    // /NodeList/0/DeviceList/1/: 노드0 ->*path2* -> 라우터 -> ... -> 노드1
+    // /NodeList/1/DeviceList/0/: 노드1 -> *path1* -> 라우터
+    // /NodeList/1/DeviceList/1/: 노드1 -> *path2* -> 라우터
+    // /NodeList/1/DeviceList/2/: 노드1 -> *path3* -> 라우터
 
     // /ChannelList/0: 노드0 -> *path1* -> 라우터 -> ... -> 노드1
     // /ChannelList/2: 노드0 -> *path2* -> 라우터 -> ... -> 노드1
+    // /ChannelList/4: 노드0 -> *path3* -> 라우터 -> ... -> 노드1
     
     // /ChannelList/1: 노드0 -> ... -> 라우터 -> *path1* -> 노드1
     // /ChannelList/3: 노드0 -> ... -> 라우터 -> *path2* -> 노드1
+    // /ChannelList/5: 노드0 -> ... -> 라우터 -> *path3* -> 노드1
 
     if (device == 0) {    
         Config::Set("/NodeList/1/DeviceList/0/$ns3::PointToPointNetDevice/DataRate", BandRate);
         Config::Set("/ChannelList/1/$ns3::PointToPointChannel/Delay", RTT);
-	} else {
+	} else if (device == 1) {
         Config::Set("/NodeList/1/DeviceList/1/$ns3::PointToPointNetDevice/DataRate", BandRate);
         Config::Set("/ChannelList/3/$ns3::PointToPointChannel/Delay", RTT);
+	} else {
+        Config::Set("/NodeList/1/DeviceList/2/$ns3::PointToPointNetDevice/DataRate", BandRate);
+        Config::Set("/ChannelList/5/$ns3::PointToPointChannel/Delay", RTT);
 	}
     /*
     std::ostringstream cmd_oss;
@@ -84,7 +90,7 @@ std::string to_string_with_precision(const T a_value, const int n = 6)
 
 int main (int argc, char *argv[]) {
     LogComponentEnable ("DceMptcpTest", LOG_LEVEL_ALL);
-    uint32_t nRtrs = 2;
+    uint32_t pathCount = 2;
     CommandLine cmd;
     std::string sched = "only_fast";
     bool rtt_change = true;
@@ -101,12 +107,20 @@ int main (int argc, char *argv[]) {
 	cmd.AddValue ("trafficDuration", "iperf traffic duration in seconds", trafficDuration);
 	cmd.AddValue ("simulationStop", "simulation stop time in seconds", simulationStop);
 	cmd.AddValue ("guardLatencyUs", "only_fast guard latency in microseconds", guardLatencyUs);
+    cmd.AddValue ("pathCount", "number of physical MPTCP paths: 2 or 3", pathCount);
     cmd.Parse (argc, argv);
+
+    if (pathCount != 2 && pathCount != 3) {
+        NS_LOG_UNCOND ("pathCount must be 2 or 3");
+        return 2;
+    }
+    uint32_t nRtrs = pathCount;
 
     NS_LOG_UNCOND ("sched " << sched);
     NS_LOG_UNCOND ("bandwidth " << bandwidth);
     NS_LOG_UNCOND ("congestionControl " << congestionControl);
 	NS_LOG_UNCOND ("guardLatencyUs " << guardLatencyUs);
+    NS_LOG_UNCOND ("pathCount " << pathCount);
     
     NodeContainer nodes, routers;
     nodes.Create (2);
@@ -232,30 +246,54 @@ int main (int argc, char *argv[]) {
 
     StringValue set_bandwidth2 = StringValue("100Mbps");
     int set_delay2 = 20;
+
+    StringValue set_bandwidth3 = StringValue("100Mbps");
+    int set_delay3 = 20;
+
     int _switch = 0;
     bool pacing = true;
 
-    Simulator::Schedule(Seconds(1), &ChangeRTT, (_switch) % 2 , set_bandwidth1, StringValue(std::to_string(set_delay1) + "ms")); // start UE movement
-    Simulator::Schedule(Seconds(1), &ChangeRTT, (_switch + 1) % 2, set_bandwidth2, StringValue(std::to_string(set_delay2) + "ms")); // start UE movement
+    Simulator::Schedule(Seconds(1), &ChangeRTT, 0, set_bandwidth1,
+                        StringValue(std::to_string(set_delay1) + "ms"));
+    Simulator::Schedule(Seconds(1), &ChangeRTT, 1, set_bandwidth2,
+                        StringValue(std::to_string(set_delay2) + "ms"));
+    if (pathCount == 3) {
+        Simulator::Schedule(Seconds(1), &ChangeRTT, 2, set_bandwidth3,
+                            StringValue(std::to_string(set_delay3) + "ms"));
+    }
     _switch++;
 
     if (rtt_change) {
         for(int i = 7; i<32; i += 5) {
+            int oldFastPath = (_switch - 1) % pathCount;
+            int newFastPath = _switch % pathCount;
+            StringValue oldSlowBandwidth = oldFastPath == 2 ? set_bandwidth3 : set_bandwidth2;
+            int oldSlowDelay = oldFastPath == 2 ? set_delay3 : set_delay2;
+            int newSlowDelay = newFastPath == 2 ? set_delay3 : set_delay2;
+
             if (pacing == false) {
-                Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch) % 2, set_bandwidth1, StringValue(std::to_string(set_delay1) + "ms")); // start UE movement
-                Simulator::Schedule (Seconds (i), &ChangeRTT, (_switch + 1) % 2, set_bandwidth2, StringValue(std::to_string(set_delay2) + "ms")); // start UE movement
+                Simulator::Schedule (Seconds (i), &ChangeRTT, newFastPath,
+                                     set_bandwidth1,
+                                     StringValue(std::to_string(set_delay1) + "ms"));
+                Simulator::Schedule (Seconds (i), &ChangeRTT, oldFastPath,
+                                     oldSlowBandwidth,
+                                     StringValue(std::to_string(oldSlowDelay) + "ms"));
             } else {
                 int t = i * 1000;
                 for (int x = t - set_delay1; x <= t; x++) {
-                    StringValue delay_ms = StringValue(to_string_with_precision<float>(Delay(t, set_delay1, set_delay2, x)) + "ms");
-                    Simulator::Schedule (Seconds (x / 1000.0), &ChangeRTT, (_switch + 1) % 2, set_bandwidth2, delay_ms); // start UE movement
+                    StringValue delay_ms = StringValue(to_string_with_precision<float>(
+                        Delay(t, set_delay1, oldSlowDelay, x)) + "ms");
+                    Simulator::Schedule (Seconds (x / 1000.0), &ChangeRTT,
+                                         oldFastPath, oldSlowBandwidth, delay_ms);
                 }
-                for (int x = t - set_delay2; x <= t; x++) {
-                    StringValue delay_ms = StringValue(to_string_with_precision<float>(Delay(t, set_delay2, set_delay1, x)) + "ms");
-                    Simulator::Schedule (Seconds (x / 1000.0), &ChangeRTT, (_switch) % 2, set_bandwidth1, delay_ms); // start UE movement
+                for (int x = t - newSlowDelay; x <= t; x++) {
+                    StringValue delay_ms = StringValue(to_string_with_precision<float>(
+                        Delay(t, newSlowDelay, set_delay1, x)) + "ms");
+                    Simulator::Schedule (Seconds (x / 1000.0), &ChangeRTT,
+                                         newFastPath, set_bandwidth1, delay_ms);
                 }
             }
-            _switch++;
+			_switch++;
 	    }   
     }
 

@@ -99,6 +99,12 @@ int main(int argc, char *argv[])
 	uint32_t trafficDuration = 12;
 	double simulationStop = 15.0;
 	uint32_t guardLatencyUs = 0;
+
+	uint32_t pathCount = 2;
+	/* The iperf connection starts on the mmWave route, so this is the
+	 * MPTCP master subflow.  The kernel assigns loc_id 0 to the master.
+	 */
+	const uint32_t mmwaveLocId = 0;
     
     LogComponentEnable("DceMptcpMmWave", LOG_LEVEL_ALL);
     //LogComponentEnable ("MmWave3gppChannel", LOG_LEVEL_DEBUG);
@@ -114,18 +120,25 @@ int main(int argc, char *argv[])
 	cmd.AddValue ("trafficDuration", "iperf traffic duration in seconds", trafficDuration);
 	cmd.AddValue ("simulationStop", "simulation stop time in seconds", simulationStop);
 	cmd.AddValue ("guardLatencyUs", "only_fast guard latency in microseconds", guardLatencyUs);
+	cmd.AddValue ("pathCount", "number of access paths: 2=mmWave+Wi-Fi, 3=mmWave+LTE+Wi-Fi", pathCount);
     cmd.Parse(argc, argv);
 
+    if (pathCount < 2 || pathCount > 3) {
+        NS_LOG_UNCOND ("mmwave pathCount must be 2 or 3");
+        return 2;
+    }
     NS_LOG_UNCOND ("sched " << sched);
     NS_LOG_UNCOND ("bandwidth " << bandwidth);
 	NS_LOG_UNCOND ("congestionControl " << congestionControl);
 	NS_LOG_UNCOND ("guardLatencyUs " << guardLatencyUs);
+	NS_LOG_UNCOND ("pathCount " << pathCount);
+	NS_LOG_UNCOND ("mmwaveLocId " << mmwaveLocId);
 
     std::string bufSize = "1073700000";
     //  std::string bufSize = "1073700000";
     std::string p2pdelay = "0ms";
 
-    bool disLte = true;
+    bool disLte = pathCount < 3;
     bool disWifi = false;
     bool disMmwave = false;
 
@@ -377,8 +390,8 @@ int main(int argc, char *argv[])
             NS_LOG_UNCOND("rule add from " << if1.GetAddress(i, 0) << " table " << 1 << " node " << nodes.Get(i));
             LinuxStackHelper::RunIp(nodes.Get(i), Seconds(0.01), cmd_oss.str().c_str());
             cmd_oss.str("");
-            cmd_oss << "route add default via "
-                    << "7.0.0. " << i << " dev sim" << 0 << " table " << 1;
+            cmd_oss << "route add default via 7.0.0.1 dev sim"
+                    << ueMmWaveDevs.Get(i)->GetIfIndex() << " table " << 1;
             NS_LOG_UNCOND("route add default via "
                           << "7.0.0.1 " << i << " dev sim"
                           << ueMmWaveDevs.Get(i)->GetIfIndex() << " table " << 1 << " node " << nodes.Get(i));
@@ -456,11 +469,15 @@ int main(int argc, char *argv[])
             NS_LOG_UNCOND("rule add from " << if3.GetAddress(0, 0) << " table " << (2) << " node " << serverNodes.Get(i));
             LinuxStackHelper::RunIp(serverNodes.Get(i), Seconds(0.01), cmd_oss.str().c_str());
             cmd_oss.str("");
-            cmd_oss << "route add 10.2." << i << ".0/24 dev sim" << 0 << " scope link table " << (2);
-            NS_LOG_UNCOND("route add 10.2." << i << ".0/24 dev sim" << 0 << " scope link table " << (2) << " node " << serverNodes.Get(i));
+            cmd_oss << "route add 10.2." << (numberOfNodes + i) << ".0/24 dev sim"
+                    << devices3.Get(0)->GetIfIndex() << " scope link table " << (2);
+            NS_LOG_UNCOND("route add 10.2." << (numberOfNodes + i)
+                          << ".0/24 dev sim" << devices3.Get(0)->GetIfIndex()
+                          << " scope link table " << (2) << " node " << serverNodes.Get(i));
             LinuxStackHelper::RunIp(serverNodes.Get(i), Seconds(0.01), cmd_oss.str().c_str());
             cmd_oss.str("");
-            cmd_oss << "route add 8.0.0.0/8 via " << if3.GetAddress(1, 0) << " dev sim" << 0 << " table " << (2);
+            cmd_oss << "route add 8.0.0.0/8 via " << if3.GetAddress(1, 0)
+                    << " dev sim" << devices3.Get(0)->GetIfIndex() << " table " << (2);
             NS_LOG_UNCOND("route add 8.0.0.0/8 via " << if3.GetAddress(1, 0) << " dev sim" << 0 << " table " << (2) << " node " << serverNodes.Get(i));
             LinuxStackHelper::RunIp(serverNodes.Get(i), Seconds(0.1), cmd_oss.str().c_str());
         }
@@ -537,6 +554,7 @@ int main(int argc, char *argv[])
 
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_enabled", "1");
 	stack.SysctlSet(nodes, ".net.mptcp.mptcp_only_fast_guard_us", std::to_string(guardLatencyUs));
+	stack.SysctlSet(nodes, ".net.mptcp.mptcp_only_fast_mmwave_loc_id", std::to_string(mmwaveLocId));
 
     // set
     stack.SysctlSet(nodes, ".net.mptcp.mptcp_debug", "0");

@@ -69,9 +69,13 @@ EXPORT_SYMBOL(sysctl_mptcp_debug);
 int sysctl_mptcp_syn_retries __read_mostly = 3;
 int sysctl_mptcp_only_fast_guard_us __read_mostly;
 EXPORT_SYMBOL(sysctl_mptcp_only_fast_guard_us);
+int sysctl_mptcp_only_fast_mmwave_loc_id __read_mostly;
+EXPORT_SYMBOL(sysctl_mptcp_only_fast_mmwave_loc_id);
 
 static int mptcp_only_fast_guard_min;
 static int mptcp_only_fast_guard_max = 1000000;
+static int mptcp_only_fast_loc_id_min;
+static int mptcp_only_fast_loc_id_max = 255;
 
 bool mptcp_init_failed __read_mostly;
 
@@ -153,6 +157,15 @@ static struct ctl_table mptcp_table[] = {
 		.proc_handler = &proc_dointvec_minmax,
 		.extra1 = &mptcp_only_fast_guard_min,
 		.extra2 = &mptcp_only_fast_guard_max
+	},
+	{
+		.procname = "mptcp_only_fast_mmwave_loc_id",
+		.data = &sysctl_mptcp_only_fast_mmwave_loc_id,
+		.maxlen = sizeof(int),
+		.mode = 0644,
+		.proc_handler = &proc_dointvec_minmax,
+		.extra1 = &mptcp_only_fast_loc_id_min,
+		.extra2 = &mptcp_only_fast_loc_id_max
 	},
 	{
 		.procname	= "mptcp_path_manager",

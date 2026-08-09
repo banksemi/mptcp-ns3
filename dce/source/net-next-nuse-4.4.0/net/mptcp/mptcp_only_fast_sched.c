@@ -732,22 +732,30 @@ static struct sk_buff *mptcp_next_segment(struct sock *meta_sk,
 	if (slowsk != NULL) {
 		struct tcp_sock *slowtp = tcp_sk(slowsk);
 
-		/* If there are no packets in flight on the slow path, and the packet to be sent now is not an injected packet */
-		if (tcp_packets_in_flight(slowtp) < 1 && TCP_SKB_CB(skb)->path_mask == 0) {
-			struct mptcp_cb *mpcb = meta_tp->mpcb;
-			/* Copy SKB */
-			for(int i = 0; i < 2; i++) {
-				struct sk_buff *copy_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
-				if (likely(copy_skb)) { /* SKB isn't NULL */
-					copy_skb->sk = meta_sk;
-					if (!after(TCP_SKB_CB(copy_skb)->end_seq, meta_tp->snd_una)) {
-						__kfree_skb(copy_skb);
-					} else {
-						// memset(TCP_SKB_CB(copy_skb)->dss, 0 , mptcp_dss_len);
-						TCP_SKB_CB(copy_skb)->path_mask = mptcp_pi_to_flag(tcp_sk(slowsk)->mptcp->path_index);
-						TCP_SKB_CB(copy_skb)->path_mask ^= -1u;
-						TCP_SKB_CB(copy_skb)->custom_variable[4] = 1;
-						skb_queue_tail(&mpcb->reinject_queue, copy_skb);
+		/* Send the same two probing packets on every non-selected path. */
+		if (TCP_SKB_CB(skb)->path_mask == 0) {
+			struct tcp_sock *probetp;
+
+			mptcp_for_each_tp(mpcb, probetp) {
+				if ((probetp != slowtp &&
+				     (subtp == slowtp || probetp == subtp)) ||
+				    tcp_packets_in_flight(probetp) >= 1)
+					continue;
+
+				/* Copy the same SKB twice to avoid delayed ACK. */
+				for(int i = 0; i < 2; i++) {
+					struct sk_buff *copy_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
+					if (likely(copy_skb)) { /* SKB isn't NULL */
+						copy_skb->sk = meta_sk;
+						if (!after(TCP_SKB_CB(copy_skb)->end_seq, meta_tp->snd_una)) {
+							__kfree_skb(copy_skb);
+						} else {
+							// memset(TCP_SKB_CB(copy_skb)->dss, 0 , mptcp_dss_len);
+							TCP_SKB_CB(copy_skb)->path_mask = mptcp_pi_to_flag(probetp->mptcp->path_index);
+							TCP_SKB_CB(copy_skb)->path_mask ^= -1u;
+							TCP_SKB_CB(copy_skb)->custom_variable[4] = 1;
+							skb_queue_tail(&mpcb->reinject_queue, copy_skb);
+						}
 					}
 				}
 			}
