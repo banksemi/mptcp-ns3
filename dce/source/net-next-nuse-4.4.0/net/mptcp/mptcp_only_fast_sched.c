@@ -17,7 +17,6 @@ struct defsched_priv {
 	struct timer_list *fast_retransmission_timer;
 
 	struct tcp_sock *activetp;
-	struct tcp_sock *backuptp;
 
 	u32 dont_use_until_ack;
 	u8 target_path_index;
@@ -610,15 +609,19 @@ void check_ack(struct defsched_priv *dsp) {
 	tcp_log(0, "check", 1);
 	mptcp_for_each_tp(mpcb, tp_it) {
 		struct tcp_sock *activetp = tp_it;
-		struct tcp_sock *backuptp = NULL;
-
-
+		struct tcp_sock *backuptp;
+		struct tcp_sock *slowest_othertp = NULL;
 		struct tcp_sock *tp_it_to_find;
-		mptcp_for_each_tp(mpcb, tp_it_to_find) {
-			if (activetp != tp_it_to_find)
-				backuptp = tp_it_to_find;
-		}
 
+		mptcp_for_each_tp(mpcb, tp_it_to_find) {
+			if (activetp == tp_it_to_find)
+				continue;
+			if (!slowest_othertp ||
+			    tp_it_to_find->srtt_us > slowest_othertp->srtt_us)
+				slowest_othertp = tp_it_to_find;
+		}
+		if (!slowest_othertp)
+			continue;
 
 		tcp_log(activetp, "path_index", activetp->mptcp->path_index);
 
@@ -643,7 +646,7 @@ void check_ack(struct defsched_priv *dsp) {
 					tcp_log(activetp, "rtt_penalty", rtt_penalty);
 					if (seq_rtt_us < rtt_penalty)
 					{
-						unsigned long expires = tcp_time_stamp + usecs_to_jiffies(backuptp->srtt_us >> 3) * 0.2;
+						unsigned long expires = tcp_time_stamp + usecs_to_jiffies(slowest_othertp->srtt_us >> 3) * 0.2;
 						struct timer_list *timer = dsp->fast_retransmission_timer;
 						if (!timer_pending(timer)) {
 							init_timer(timer);
@@ -660,24 +663,31 @@ void check_ack(struct defsched_priv *dsp) {
 						dsp->dont_use_until_ack = activetp->snd_una;
 					}
 				}
-				/* Copy SKB */
-				struct sk_buff *copy_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
-				if (likely(copy_skb)) { /* SKB isn't NULL */
-					copy_skb->sk = meta_sk;
-					if (!after(TCP_SKB_CB(copy_skb)->end_seq, meta_tp->snd_una)) {
-						__kfree_skb(copy_skb);
-					} else {
+				/* Copy the unacknowledged SKB to every other path. */
+				mptcp_for_each_tp(mpcb, backuptp) {
+					struct sk_buff *copy_skb;
 
-						TCP_SKB_CB(skb)->custom_variable[4] = 2;
-						// memset(TCP_SKB_CB(copy_skb)->dss, 0 , mptcp_dss_len);
-						TCP_SKB_CB(copy_skb)->path_mask = mptcp_pi_to_flag(backuptp->mptcp->path_index);
-						TCP_SKB_CB(copy_skb)->path_mask ^= -1u;
-						TCP_SKB_CB(copy_skb)->custom_variable[4] = 3;
-						skb_queue_tail(&mpcb->reinject_queue, copy_skb);
-						tcp_log(0, "copyskb", 1);
-						//printk("asdf2 %u %d to %d", TCP_SKB_CB(skb)->seq, TCP_SKB_CB(skb)->path_mask, backuptp->mptcp->path_index);
-						//printk("real dont reinject 1? %d", mptcp_dont_reinject_skb(activetp, copy_skb));
-						//printk("real dont reinject 2? %d", mptcp_dont_reinject_skb(backuptp, copy_skb));
+					if (backuptp == activetp)
+						continue;
+
+					copy_skb = pskb_copy_for_clone(skb, GFP_ATOMIC);
+					if (likely(copy_skb)) { /* SKB isn't NULL */
+						copy_skb->sk = meta_sk;
+						if (!after(TCP_SKB_CB(copy_skb)->end_seq, meta_tp->snd_una)) {
+							__kfree_skb(copy_skb);
+						} else {
+
+							TCP_SKB_CB(skb)->custom_variable[4] = 2;
+							// memset(TCP_SKB_CB(copy_skb)->dss, 0 , mptcp_dss_len);
+							TCP_SKB_CB(copy_skb)->path_mask = mptcp_pi_to_flag(backuptp->mptcp->path_index);
+							TCP_SKB_CB(copy_skb)->path_mask ^= -1u;
+							TCP_SKB_CB(copy_skb)->custom_variable[4] = 3;
+							skb_queue_tail(&mpcb->reinject_queue, copy_skb);
+							tcp_log(0, "copyskb", 1);
+							//printk("asdf2 %u %d to %d", TCP_SKB_CB(skb)->seq, TCP_SKB_CB(skb)->path_mask, backuptp->mptcp->path_index);
+							//printk("real dont reinject 1? %d", mptcp_dont_reinject_skb(activetp, copy_skb));
+							//printk("real dont reinject 2? %d", mptcp_dont_reinject_skb(backuptp, copy_skb));
+						}
 					}
 				}
 			}
@@ -737,8 +747,7 @@ static struct sk_buff *mptcp_next_segment(struct sock *meta_sk,
 			struct tcp_sock *probetp;
 
 			mptcp_for_each_tp(mpcb, probetp) {
-				if ((probetp != slowtp &&
-				     (subtp == slowtp || probetp == subtp)) ||
+				if (probetp == subtp ||
 				    tcp_packets_in_flight(probetp) >= 1)
 					continue;
 
@@ -761,7 +770,7 @@ static struct sk_buff *mptcp_next_segment(struct sock *meta_sk,
 			}
 		}
 
-		if (subsk != slowsk && TCP_SKB_CB(skb)->path_mask == 0) {
+		if (TCP_SKB_CB(skb)->path_mask == 0) {
 			
 			tcp_log(0, "time", tcp_time_stamp);
 			tcp_log(0, "send_path", subtp->mptcp->path_index);
@@ -771,7 +780,6 @@ static struct sk_buff *mptcp_next_segment(struct sock *meta_sk,
 			TCP_SKB_CB(skb)->custom_variable[4] = 0;
 			struct defsched_priv *dsp = defsched_get_priv(subtp);
 			dsp->activetp = subtp;
-			dsp->backuptp = slowtp;
 			unsigned long expires = tcp_time_stamp + usecs_to_jiffies(subtp->srtt_us >> 3) * 0.1;
 			struct timer_list *timer = dsp->fast_retransmission_timer;
 
